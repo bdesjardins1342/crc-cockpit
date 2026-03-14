@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CRC Cockpit</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:       #0a0c10;
+  --bg2:      #0f1218;
+  --bg3:      #161b24;
+  --border:   #1e2730;
+  --border2:  #2a3340;
+  --accent:   #f59e0b;
+  --accent2:  #3b82f6;
+  --green:    #22c55e;
+  --red:      #ef4444;
+  --yellow:   #eab308;
+  --text:     #e2e8f0;
+  --text2:    #94a3b8;
+  --text3:    #475569;
+  --mono:     'JetBrains Mono', monospace;
+  --sans:     'Syne', sans-serif;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 13px;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── HEADER ──────────────────────────────────────────── */
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  height: 52px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; z-index: 100;
+}
+
+.logo {
+  font-family: var(--sans);
+  font-weight: 800;
+  font-size: 18px;
+  letter-spacing: -0.5px;
+  color: var(--accent);
+  display: flex; align-items: center; gap: 10px;
+}
+.logo span { color: var(--text2); font-weight: 400; font-size: 13px; font-family: var(--mono); }
+
+.header-right { display: flex; align-items: center; gap: 20px; }
+
+.server-status {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 11px; color: var(--text3);
+}
+.status-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--text3);
+  transition: background 0.3s;
+}
+.status-dot.online { background: var(--green); box-shadow: 0 0 6px var(--green); }
+.status-dot.offline { background: var(--red); }
+
+#clock { font-size: 12px; color: var(--text3); letter-spacing: 1px; }
+
+/* ── LAYOUT ──────────────────────────────────────────── */
+.layout {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ── SIDEBAR ─────────────────────────────────────────── */
+nav {
+  width: 200px;
+  background: var(--bg2);
+  border-right: 1px solid var(--border);
+  padding: 16px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.nav-section {
+  padding: 12px 16px 4px;
+  font-size: 9px;
+  letter-spacing: 2px;
+  color: var(--text3);
+  text-transform: uppercase;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  cursor: pointer;
+  color: var(--text2);
+  font-size: 12px;
+  border-left: 2px solid transparent;
+  transition: all 0.15s;
+}
+.nav-item:hover { background: var(--bg3); color: var(--text); }
+.nav-item.active {
+  background: var(--bg3);
+  color: var(--accent);
+  border-left-color: var(--accent);
+}
+.nav-icon { font-size: 14px; width: 18px; text-align: center; }
+
+/* ── MAIN ────────────────────────────────────────────── */
+main {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* ── PANEL ───────────────────────────────────────────── */
+.panel {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg3);
+}
+
+.panel-title {
+  font-family: var(--sans);
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text2);
+}
+
+.panel-body { padding: 16px; }
+
+/* ── ANALYSE PANEL ───────────────────────────────────── */
+.analyse-grid {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.field-group { display: flex; flex-direction: column; gap: 6px; }
+.field-label { font-size: 10px; color: var(--text3); letter-spacing: 1px; text-transform: uppercase; }
+
+select, input {
+  background: var(--bg);
+  border: 1px solid var(--border2);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 8px 12px;
+  border-radius: 4px;
+  outline: none;
+  width: 100%;
+  transition: border-color 0.15s;
+}
+select:focus, input:focus { border-color: var(--accent2); }
+
+option { background: var(--bg2); }
+
+/* ── BOUTONS ─────────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: #0a0c10;
+  font-weight: 700;
+}
+.btn-primary:hover { background: #fbbf24; }
+.btn-primary:disabled { background: var(--border2); color: var(--text3); cursor: not-allowed; }
+
+.btn-ghost {
+  background: transparent;
+  border: 1px solid var(--border2);
+  color: var(--text2);
+}
+.btn-ghost:hover { border-color: var(--accent2); color: var(--accent2); }
+
+.btn-danger {
+  background: transparent;
+  border: 1px solid var(--border2);
+  color: var(--text3);
+}
+.btn-danger:hover { border-color: var(--red); color: var(--red); }
+
+.checkbox-row {
+  display: flex; align-items: center; gap: 8px;
+  color: var(--text2); font-size: 12px; cursor: pointer;
+  padding: 8px 0;
+}
+.checkbox-row input[type=checkbox] {
+  width: auto; accent-color: var(--accent);
+}
+
+/* ── STATUT JOB ──────────────────────────────────────── */
+#job-status {
+  display: none;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.job-bar {
+  display: flex; align-items: center; gap: 12px;
+  margin-bottom: 8px;
+}
+
+.job-label { font-size: 11px; color: var(--text2); }
+
+.spinner {
+  width: 14px; height: 14px;
+  border: 2px solid var(--border2);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.job-output {
+  font-size: 11px;
+  color: var(--text3);
+  line-height: 1.6;
+  max-height: 180px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  font-family: var(--mono);
+  background: var(--bg2);
+  padding: 8px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+}
+
+/* ── PROJETS TABLE ───────────────────────────────────── */
+.projets-table { width: 100%; border-collapse: collapse; }
+.projets-table th {
+  text-align: left;
+  padding: 8px 12px;
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--text3);
+  border-bottom: 1px solid var(--border);
+}
+.projets-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text2);
+  vertical-align: middle;
+}
+.projets-table tr:hover td { background: var(--bg3); }
+.projets-table tr:last-child td { border-bottom: none; }
+
+.badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 500;
+}
+.badge-green { background: rgba(34,197,94,0.1); color: var(--green); }
+.badge-gray  { background: var(--bg3); color: var(--text3); }
+.badge-amber { background: rgba(245,158,11,0.1); color: var(--accent); }
+
+.link-btn {
+  background: none; border: none;
+  color: var(--accent2); font-family: var(--mono);
+  font-size: 11px; cursor: pointer;
+  text-decoration: underline; text-underline-offset: 3px;
+  padding: 0;
+}
+.link-btn:hover { color: var(--text); }
+
+/* ── LIVRABLES VIEWER ────────────────────────────────── */
+#livrable-viewer { display: none; }
+
+.livrable-tabs {
+  display: flex; gap: 0;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  padding: 0 16px;
+  background: var(--bg3);
+}
+.livrable-tab {
+  padding: 8px 14px;
+  font-size: 11px;
+  color: var(--text3);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+.livrable-tab:hover { color: var(--text2); }
+.livrable-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+.livrable-content {
+  padding: 20px;
+  font-size: 12px;
+  line-height: 1.8;
+  color: var(--text2);
+  max-height: 500px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  font-family: var(--mono);
+}
+
+/* ── MARKDOWN SIMPLE ─────────────────────────────────── */
+.md h1 { font-family: var(--sans); font-size: 16px; color: var(--accent); margin: 0 0 12px; font-weight: 700; }
+.md h2 { font-family: var(--sans); font-size: 13px; color: var(--text); margin: 16px 0 8px; font-weight: 600; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+.md h3 { font-size: 12px; color: var(--accent2); margin: 12px 0 6px; font-weight: 500; }
+.md p  { margin-bottom: 8px; color: var(--text2); }
+.md strong { color: var(--text); font-weight: 600; }
+.md em { color: var(--yellow); font-style: normal; }
+.md code { background: var(--bg3); padding: 1px 5px; border-radius: 3px; font-size: 11px; color: var(--accent2); }
+.md ul { padding-left: 16px; margin-bottom: 8px; }
+.md li { margin-bottom: 4px; color: var(--text2); }
+.md hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+.md .absent { color: var(--text3); font-style: italic; }
+.md .critique { color: var(--red); }
+.md .ok { color: var(--green); }
+
+/* ── SCROLLBAR ───────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text3); }
+
+/* ── TOAST ───────────────────────────────────────────── */
+#toast {
+  position: fixed; bottom: 24px; right: 24px;
+  background: var(--bg3); border: 1px solid var(--border2);
+  color: var(--text); padding: 10px 16px;
+  border-radius: 6px; font-size: 12px;
+  transform: translateY(80px); opacity: 0;
+  transition: all 0.3s; z-index: 999;
+}
+#toast.show { transform: translateY(0); opacity: 1; }
+#toast.success { border-color: var(--green); }
+#toast.error { border-color: var(--red); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    CRC <span>/ cockpit v1.1</span>
+  </div>
+  <div class="header-right">
+    <div class="server-status">
+      <div class="status-dot" id="status-dot"></div>
+      <span id="status-text">serveur...</span>
+    </div>
+    <div id="clock">--:--:--</div>
+  </div>
+</header>
+
+<div class="layout">
+
+  <nav>
+    <div class="nav-section">Navigation</div>
+    <div class="nav-item active" onclick="showPage('analyse')">
+      <span class="nav-icon">📋</span> Analyser AO
+    </div>
+    <div class="nav-item" onclick="showPage('projets')">
+      <span class="nav-icon">📁</span> Projets
+    </div>
+    <div class="nav-item" onclick="showPage('livrables')">
+      <span class="nav-icon">📄</span> Livrables
+    </div>
+    <div class="nav-section" style="margin-top:12px">À venir</div>
+    <div class="nav-item" style="opacity:0.4; cursor:default">
+      <span class="nav-icon">🚨</span> Addendas
+    </div>
+    <div class="nav-item" style="opacity:0.4; cursor:default">
+      <span class="nav-icon">📊</span> Soumissions
+    </div>
+    <div class="nav-item" style="opacity:0.4; cursor:default">
+      <span class="nav-icon">🏆</span> Post-mortem
+    </div>
+  </nav>
+
+  <main>
+
+    <!-- PAGE: ANALYSER -->
+    <div id="page-analyse">
+
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Lancer une analyse</span>
+        </div>
+        <div class="panel-body">
+          <div class="analyse-grid">
+            <div class="field-group">
+              <label class="field-label">Projet</label>
+              <select id="projet-select">
+                <option value="">— Chargement des projets... —</option>
+              </select>
+            </div>
+            <label class="checkbox-row">
+              <input type="checkbox" id="forcer-check">
+              Forcer régénération
+            </label>
+            <button class="btn btn-primary" id="btn-analyser" onclick="lancerAnalyse()" disabled>
+              ▶ Analyser
+            </button>
+          </div>
+        </div>
+        <div id="job-status">
+          <div class="job-bar">
+            <div class="spinner" id="job-spinner" style="display:none"></div>
+            <span class="job-label" id="job-label">—</span>
+            <button class="btn btn-ghost" style="margin-left:auto; font-size:11px; padding:4px 10px" onclick="clearJob()">✕</button>
+          </div>
+          <div class="job-output" id="job-output"></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Projets récents</span>
+          <button class="btn btn-ghost" style="font-size:11px; padding:4px 10px" onclick="chargerProjets()">↻ Actualiser</button>
+        </div>
+        <div class="panel-body" style="padding:0">
+          <table class="projets-table" id="projets-mini">
+            <thead>
+              <tr>
+                <th>Projet</th>
+                <th>Statut</th>
+                <th>Dernière analyse</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="projets-mini-body">
+              <tr><td colspan="4" style="color:var(--text3); text-align:center; padding:20px">Chargement...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- PAGE: PROJETS -->
+    <div id="page-projets" style="display:none">
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Tous les projets</span>
+          <button class="btn btn-ghost" style="font-size:11px; padding:4px 10px" onclick="chargerProjets()">↻ Actualiser</button>
+        </div>
+        <div class="panel-body" style="padding:0">
+          <table class="projets-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Nom du projet</th>
+                <th>Analyse</th>
+                <th>Date</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="projets-full-body">
+              <tr><td colspan="5" style="color:var(--text3); text-align:center; padding:20px">Chargement...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAGE: LIVRABLES -->
+    <div id="page-livrables" style="display:none">
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Consulter les livrables</span>
+        </div>
+        <div class="panel-body">
+          <div style="display:flex; gap:10px; align-items:end">
+            <div class="field-group" style="flex:1">
+              <label class="field-label">Projet</label>
+              <select id="livrable-projet-select" onchange="chargerLivrables()">
+                <option value="">— Sélectionner un projet —</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div id="livrable-viewer">
+          <div class="livrable-tabs" id="livrable-tabs"></div>
+          <div class="livrable-content md" id="livrable-content"></div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const API = 'http://localhost:8000';
+let projets = [];
+let jobId = null;
+let jobInterval = null;
+
+// ── INIT ────────────────────────────────────────────────
+window.onload = () => {
+  updateClock();
+  setInterval(updateClock, 1000);
+  checkServer();
+  setInterval(checkServer, 5000);
+  chargerProjets();
+};
+
+function updateClock() {
+  const now = new Date();
+  document.getElementById('clock').textContent =
+    now.toLocaleTimeString('fr-CA', { hour12: false });
+}
+
+async function checkServer() {
+  try {
+    const r = await fetch(`${API}/ping`, { signal: AbortSignal.timeout(2000) });
+    const ok = r.ok;
+    document.getElementById('status-dot').className = 'status-dot ' + (ok ? 'online' : 'offline');
+    document.getElementById('status-text').textContent = ok ? 'serveur actif' : 'erreur serveur';
+  } catch {
+    document.getElementById('status-dot').className = 'status-dot offline';
+    document.getElementById('status-text').textContent = 'serveur hors ligne';
+  }
+}
+
+// ── NAVIGATION ──────────────────────────────────────────
+function showPage(page) {
+  document.querySelectorAll('[id^="page-"]').forEach(el => el.style.display = 'none');
+  document.getElementById('page-' + page).style.display = 'block';
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+  event.currentTarget.classList.add('active');
+}
+
+// ── PROJETS ─────────────────────────────────────────────
+async function chargerProjets() {
+  try {
+    const r = await fetch(`${API}/projets`);
+    const data = await r.json();
+    projets = data.projets || [];
+    renderProjets();
+    renderSelect();
+  } catch {
+    toast('Serveur inaccessible — lancez uvicorn serveur_cockpit:app --reload', 'error');
+  }
+}
+
+function renderSelect() {
+  const sel = document.getElementById('projet-select');
+  const sel2 = document.getElementById('livrable-projet-select');
+  const opts = projets.map(p =>
+    `<option value="${p.nom}">${p.nom}</option>`
+  ).join('');
+  sel.innerHTML = '<option value="">— Sélectionner un projet —</option>' + opts;
+  sel2.innerHTML = '<option value="">— Sélectionner un projet —</option>' + opts;
+  document.getElementById('btn-analyser').disabled = false;
+
+  sel.onchange = () => {
+    document.getElementById('btn-analyser').disabled = !sel.value;
+  };
+}
+
+function renderProjets() {
+  // Mini table (page analyse)
+  const tbody = document.getElementById('projets-mini-body');
+  tbody.innerHTML = projets.slice(0, 8).map(p => `
+    <tr>
+      <td style="color:var(--text)">${p.nom}</td>
+      <td>${p.a_analyse
+        ? '<span class="badge badge-green">✓ Analysé</span>'
+        : '<span class="badge badge-gray">— En attente</span>'}</td>
+      <td style="color:var(--text3)">${p.date_analyse || '—'}</td>
+      <td>
+        ${p.a_analyse
+          ? `<button class="link-btn" onclick="voirLivrables('${p.nom}')">Voir livrables →</button>`
+          : `<button class="link-btn" onclick="selectionnerEtAnalyser('${p.nom}')">Analyser →</button>`}
+      </td>
+    </tr>
+  `).join('');
+
+  // Full table (page projets)
+  const tbody2 = document.getElementById('projets-full-body');
+  tbody2.innerHTML = projets.map((p, i) => `
+    <tr>
+      <td style="color:var(--text3)">${i + 1}</td>
+      <td style="color:var(--text)">${p.nom}</td>
+      <td>${p.a_analyse
+        ? '<span class="badge badge-green">✓ Analysé</span>'
+        : '<span class="badge badge-gray">—</span>'}</td>
+      <td style="color:var(--text3); font-size:11px">${p.date_analyse || '—'}</td>
+      <td style="display:flex; gap:8px">
+        <button class="btn btn-ghost" style="font-size:11px; padding:4px 10px"
+          onclick="selectionnerEtAnalyser('${p.nom}')">▶ Analyser</button>
+        ${p.a_analyse
+          ? `<button class="btn btn-ghost" style="font-size:11px; padding:4px 10px"
+              onclick="voirLivrables('${p.nom}')">📄 Livrables</button>`
+          : ''}
+      </td>
+    </tr>
+  `).join('');
+}
+
+function selectionnerEtAnalyser(nom) {
+  document.getElementById('projet-select').value = nom;
+  document.getElementById('btn-analyser').disabled = false;
+  showPage('analyse');
+  document.querySelectorAll('.nav-item')[0].classList.add('active');
+  document.querySelectorAll('.nav-item').forEach((el, i) => {
+    if (i > 0) el.classList.remove('active');
+  });
+  lancerAnalyse();
+}
+
+// ── ANALYSE ─────────────────────────────────────────────
+async function lancerAnalyse() {
+  const projet = document.getElementById('projet-select').value;
+  const forcer = document.getElementById('forcer-check').checked;
+  if (!projet) { toast('Sélectionnez un projet', 'error'); return; }
+
+  document.getElementById('btn-analyser').disabled = true;
+  document.getElementById('job-status').style.display = 'block';
+  document.getElementById('job-spinner').style.display = 'block';
+  document.getElementById('job-label').textContent = `Analyse en cours : ${projet}`;
+  document.getElementById('job-output').textContent = 'Démarrage...';
+
+  try {
+    const r = await fetch(`${API}/analyser`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projet, forcer })
+    });
+    const data = await r.json();
+    jobId = data.job_id;
+    pollJob();
+  } catch {
+    document.getElementById('job-label').textContent = '❌ Serveur inaccessible';
+    document.getElementById('job-spinner').style.display = 'none';
+    document.getElementById('btn-analyser').disabled = false;
+  }
+}
+
+function pollJob() {
+  if (jobInterval) clearInterval(jobInterval);
+  jobInterval = setInterval(async () => {
+    try {
+      const r = await fetch(`${API}/job/${jobId}`);
+      const data = await r.json();
+      document.getElementById('job-output').textContent = data.output || '...';
+
+      if (data.status === 'done') {
+        clearInterval(jobInterval);
+        document.getElementById('job-spinner').style.display = 'none';
+        document.getElementById('job-label').textContent = `✅ Terminé — ${data.projet}`;
+        document.getElementById('btn-analyser').disabled = false;
+        toast('Analyse complétée avec succès', 'success');
+        chargerProjets();
+      } else if (data.status === 'error') {
+        clearInterval(jobInterval);
+        document.getElementById('job-spinner').style.display = 'none';
+        document.getElementById('job-label').textContent = `❌ Erreur — ${data.projet}`;
+        document.getElementById('btn-analyser').disabled = false;
+        toast('Erreur lors de l\'analyse', 'error');
+      }
+    } catch { clearInterval(jobInterval); }
+  }, 2000);
+}
+
+function clearJob() {
+  if (jobInterval) clearInterval(jobInterval);
+  document.getElementById('job-status').style.display = 'none';
+  document.getElementById('btn-analyser').disabled = false;
+}
+
+// ── LIVRABLES ───────────────────────────────────────────
+async function chargerLivrables() {
+  const projet = document.getElementById('livrable-projet-select').value;
+  if (!projet) return;
+
+  const encoded = projet.replace(/ /g, '__');
+  try {
+    const r = await fetch(`${API}/livrables/${encoded}`);
+    const data = await r.json();
+
+    if (!data.livrables || data.livrables.length === 0) {
+      toast('Aucun livrable trouvé pour ce projet', 'error');
+      return;
+    }
+
+    // Tabs
+    const tabs = document.getElementById('livrable-tabs');
+    tabs.innerHTML = data.livrables.map((l, i) => `
+      <div class="livrable-tab ${i === 0 ? 'active' : ''}"
+           onclick="switchLivrable(${i}, this)">${l.nom.replace('.md', '')}</div>
+    `).join('');
+
+    // Contenu premier livrable
+    window._livrables = data.livrables;
+    renderLivrable(0);
+    document.getElementById('livrable-viewer').style.display = 'block';
+  } catch {
+    toast('Impossible de charger les livrables', 'error');
+  }
+}
+
+function switchLivrable(idx, el) {
+  document.querySelectorAll('.livrable-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  renderLivrable(idx);
+}
+
+function renderLivrable(idx) {
+  const contenu = window._livrables[idx].contenu;
+  document.getElementById('livrable-content').innerHTML = markdownToHtml(contenu);
+}
+
+function voirLivrables(nom) {
+  document.getElementById('livrable-projet-select').value = nom;
+  showPage('livrables');
+  document.querySelectorAll('.nav-item')[2].classList.add('active');
+  document.querySelectorAll('.nav-item').forEach((el, i) => {
+    if (i !== 2) el.classList.remove('active');
+  });
+  chargerLivrables();
+}
+
+// ── MARKDOWN SIMPLE ──────────────────────────────────────
+function markdownToHtml(md) {
+  return md
+    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/`(.+?)`/g, '<code>$1</code>')
+    .replace(/^---$/gm, '<hr>')
+    .replace(/^- (.+)$/gm, '<li>$1</li>')
+    .replace(/(<li>.*<\/li>)/gs, '<ul>$1</ul>')
+    .replace(/ABSENT/g, '<span class="absent">ABSENT</span>')
+    .replace(/\[CRITIQUE\]/g, '<span class="critique">[CRITIQUE]</span>')
+    .replace(/✅/g, '<span class="ok">✅</span>')
+    .replace(/\n\n/g, '</p><p>')
+    .replace(/^(?!<[hup]|<li|<hr)(.+)$/gm, '<p>$1</p>');
+}
+
+// ── TOAST ────────────────────────────────────────────────
+function toast(msg, type = 'info') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'show ' + type;
+  setTimeout(() => { t.className = ''; }, 3500);
+}
+</script>
+</body>
+</html>
