@@ -2,11 +2,12 @@
 CRC Cockpit — Serveur local FastAPI
 Lancer : uvicorn serveur_cockpit:app --reload --port 8000
 """
-from fastapi import FastAPI, BackgroundTasks
+from fastapi import FastAPI, BackgroundTasks, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 import subprocess, os, json, glob, re, sqlite3
+import csv, io as _io
 from datetime import datetime
 from pathlib import Path
 
@@ -523,6 +524,195 @@ def seao_creer_ao_prive(body: dict):
     conn.commit()
     conn.close()
     return {"ok": True, "no_avis": no_avis}
+
+
+# ─── Budget ──────────────────────────────────────────────────────────────────
+import budget_manager as _bm
+
+def _bconn():
+    return _bm._conn()
+
+
+@app.get("/budget/projets")
+def budget_projets():
+    c = _bconn()
+    rows = c.execute("""
+        SELECT p.projet_id, p.budget_total, p.date_creation,
+               COALESCE(SUM(CASE WHEN d.type IN ('E','C','X') THEN d.montant ELSE 0 END), 0) AS engage,
+               COALESCE(SUM(CASE WHEN d.type = 'P' THEN d.montant ELSE 0 END), 0) AS paye,
+               COUNT(DISTINCT po.id) AS nb_postes
+        FROM projets_budget p
+        LEFT JOIN postes po ON po.projet_id = p.projet_id
+        LEFT JOIN depenses d ON d.projet_id = p.projet_id
+        GROUP BY p.projet_id
+        ORDER BY p.date_creation DESC
+    """).fetchall()
+    c.close()
+    return {"projets": [dict(r) for r in rows]}
+
+
+@app.get("/budget/projet/{projet_id:path}")
+def budget_get_projet(projet_id: str):
+    c = _bconn()
+    projet = c.execute("SELECT * FROM projets_budget WHERE projet_id=?", (projet_id,)).fetchone()
+    if not projet:
+        return {"error": "Projet introuvable"}
+    postes = c.execute("""
+        SELECT po.id, po.code, po.nom, po.budget_prevu,
+               COALESCE(SUM(CASE WHEN d.type IN ('E','C','X') THEN d.montant ELSE 0 END), 0) AS engage,
+               COALESCE(SUM(CASE WHEN d.type = 'P' THEN d.montant ELSE 0 END), 0) AS paye
+        FROM postes po
+        LEFT JOIN depenses d ON d.poste_id = po.id
+        WHERE po.projet_id = ?
+        GROUP BY po.id
+        ORDER BY po.code
+    """, (projet_id,)).fetchall()
+    postes_data = []
+    for po in postes:
+        deps = c.execute("""
+            SELECT id, type, reference, fournisseur, detail, montant, date_depense
+            FROM depenses WHERE poste_id=? ORDER BY date_depense DESC, id DESC
+        """, (po["id"],)).fetchall()
+        postes_data.append({**dict(po), "depenses": [dict(d) for d in deps]})
+    c.close()
+    return {"projet": dict(projet), "postes": postes_data}
+
+
+@app.post("/budget/projet")
+def budget_creer_projet(body: dict):
+    c = _bconn()
+    pid   = body.get("projet_id", "").strip()
+    total = float(body.get("budget_total", 0) or 0)
+    if not pid:
+        return {"error": "projet_id requis"}
+    try:
+        c.execute("INSERT INTO projets_budget(projet_id, budget_total, date_creation) VALUES(?,?,?)",
+                  (pid, total, datetime.now().strftime("%Y-%m-%d")))
+    except sqlite3.IntegrityError:
+        c.execute("UPDATE projets_budget SET budget_total=? WHERE projet_id=?", (total, pid))
+    c.commit(); c.close()
+    return {"ok": True}
+
+
+@app.post("/budget/poste")
+def budget_creer_poste(body: dict):
+    c = _bconn()
+    pid    = body.get("projet_id", "")
+    code   = body.get("code", "").strip()
+    nom    = body.get("nom", "").strip()
+    budget = float(body.get("budget_prevu", 0) or 0)
+    po_id  = body.get("id")
+    if not (pid and code and nom):
+        return {"error": "projet_id, code, nom requis"}
+    if po_id:
+        c.execute("UPDATE postes SET code=?, nom=?, budget_prevu=? WHERE id=?",
+                  (code, nom, budget, po_id))
+    else:
+        try:
+            c.execute("INSERT INTO postes(projet_id, code, nom, budget_prevu) VALUES(?,?,?,?)",
+                      (pid, code, nom, budget))
+        except sqlite3.IntegrityError:
+            c.execute("UPDATE postes SET nom=?, budget_prevu=? WHERE projet_id=? AND code=?",
+                      (nom, budget, pid, code))
+    c.commit(); c.close()
+    return {"ok": True}
+
+
+@app.post("/budget/depense")
+def budget_sauver_depense(body: dict):
+    c = _bconn()
+    dep_id   = body.get("id")
+    poste_id = body.get("poste_id")
+    proj_id  = body.get("projet_id", "")
+    typ      = body.get("type", "P")
+    ref      = body.get("reference", "")
+    four     = body.get("fournisseur", "")
+    det      = body.get("detail", "")
+    mont     = float(body.get("montant", 0) or 0)
+    dt       = body.get("date_depense", "")
+    if dep_id:
+        c.execute("""UPDATE depenses SET poste_id=?, type=?, reference=?, fournisseur=?,
+                     detail=?, montant=?, date_depense=? WHERE id=?""",
+                  (poste_id, typ, ref, four, det, mont, dt, dep_id))
+    else:
+        if not poste_id:
+            return {"error": "poste_id requis"}
+        c.execute("""INSERT INTO depenses(poste_id, projet_id, type, reference, fournisseur,
+                     detail, montant, date_depense) VALUES(?,?,?,?,?,?,?,?)""",
+                  (poste_id, proj_id, typ, ref, four, det, mont, dt))
+    c.commit(); c.close()
+    return {"ok": True}
+
+
+@app.delete("/budget/depense/{dep_id}")
+def budget_supprimer_depense(dep_id: int):
+    c = _bconn()
+    c.execute("DELETE FROM depenses WHERE id=?", (dep_id,))
+    c.commit(); c.close()
+    return {"ok": True}
+
+
+@app.post("/budget/depense/{dep_id}/deplacer")
+def budget_deplacer_depense(dep_id: int, body: dict):
+    c = _bconn()
+    po_id = body.get("poste_id")
+    if not po_id:
+        return {"error": "poste_id requis"}
+    c.execute("UPDATE depenses SET poste_id=? WHERE id=?", (po_id, dep_id))
+    c.commit(); c.close()
+    return {"ok": True}
+
+
+@app.post("/budget/import_pdf")
+async def budget_import_pdf(file: UploadFile = File(...)):
+    try:
+        from pdfminer.high_level import extract_text
+    except ImportError:
+        return {"error": "pdfminer non installé: pip install pdfminer.six"}
+    import io as _tmpio
+    content = await file.read()
+    texte = extract_text(_tmpio.BytesIO(content))
+    lignes = []
+    for line in texte.split('\n'):
+        line = line.strip()
+        if not line or len(line) < 4:
+            continue
+        amounts = re.findall(r'(?<!\d)(\d{1,3}(?:[ \xa0]\d{3})*(?:[.,]\d{2})?)(?!\d)', line)
+        if amounts:
+            raw = amounts[-1].replace('\xa0', '').replace(' ', '').replace(',', '.')
+            try:
+                m = float(raw)
+                if 50 <= m <= 50_000_000:
+                    lignes.append({"ligne": line[:120], "montant": round(m, 2)})
+            except ValueError:
+                pass
+    return {"lignes": lignes[:60]}
+
+
+@app.get("/budget/export/{projet_id:path}")
+def budget_export(projet_id: str):
+    c = _bconn()
+    rows = c.execute("""
+        SELECT po.code, po.nom, po.budget_prevu,
+               d.date_depense, d.type, d.reference, d.fournisseur, d.detail, d.montant
+        FROM depenses d
+        JOIN postes po ON po.id = d.poste_id
+        WHERE d.projet_id=?
+        ORDER BY po.code, d.date_depense
+    """, (projet_id,)).fetchall()
+    c.close()
+    out = _io.StringIO()
+    w = csv.writer(out)
+    w.writerow(["Code", "Poste", "Budget prévu", "Date", "Type", "Référence", "Fournisseur", "Détail", "Montant"])
+    for r in rows:
+        w.writerow(list(r))
+    out.seek(0)
+    fn = f"budget_{projet_id.replace('/', '-').replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.csv"
+    return StreamingResponse(
+        iter(['\ufeff' + out.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=\"{fn}\""}
+    )
 
 
 app.mount("/static", StaticFiles(directory=COCKPIT_DIR), name="static")

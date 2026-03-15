@@ -311,6 +311,18 @@ option { background: var(--bg2); }
 }
 .link-btn:hover { color: var(--text); }
 
+.input-field {
+  background: var(--bg3);
+  border: 1px solid var(--border2);
+  color: var(--text);
+  padding: 6px 10px;
+  font-size: 12px;
+  font-family: var(--mono);
+  border-radius: 3px;
+  outline: none;
+}
+.input-field:focus { border-color: var(--accent); }
+
 /* ── LIVRABLES VIEWER ────────────────────────────────── */
 #livrable-viewer { display: none; }
 
@@ -454,6 +466,33 @@ option { background: var(--bg2); }
 #toast.show { transform: translateY(0); opacity: 1; }
 #toast.success { border-color: var(--green); }
 #toast.error { border-color: var(--red); }
+
+/* ── BUDGET ──────────────────────────────────────────── */
+.budget-poste { border-bottom: 1px solid var(--border); }
+.budget-poste:last-child { border-bottom: none; }
+.budget-poste-header {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 16px; cursor: pointer; transition: background 0.15s;
+  user-select: none;
+}
+.budget-poste-header:hover { background: var(--bg3); }
+.bpo-toggle { font-size: 10px; color: var(--text3); width: 14px; flex-shrink: 0; }
+.bpo-code { font-size: 11px; color: var(--accent); min-width: 72px; font-weight: 600; }
+.bpo-nom  { flex: 1; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bpo-stats {
+  display: flex; gap: 20px; font-size: 11px; color: var(--text2);
+  flex-shrink: 0;
+}
+.bpo-stats strong { color: var(--text); }
+.budget-poste-body { background: color-mix(in srgb, var(--bg3) 50%, transparent); }
+.type-badge {
+  font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 3px;
+  font-family: var(--mono); letter-spacing: 0.5px;
+}
+.type-P { background: color-mix(in srgb, var(--green)  20%, transparent); color: var(--green);  }
+.type-E { background: color-mix(in srgb, var(--yellow) 20%, transparent); color: var(--yellow); }
+.type-C { background: color-mix(in srgb, var(--accent2)20%, transparent); color: var(--accent2);}
+.type-X { background: color-mix(in srgb, var(--red)    20%, transparent); color: var(--red);    }
 </style>
 </head>
 <body>
@@ -486,6 +525,9 @@ option { background: var(--bg2); }
     </div>
     <div class="nav-item" onclick="showPage('marche')">
       <span class="nav-icon">📈</span> Marché
+    </div>
+    <div class="nav-item" onclick="showPage('budget')">
+      <span class="nav-icon">💰</span> Budget
     </div>
     <div class="nav-section" style="margin-top:12px">À venir</div>
     <div class="nav-item" style="opacity:0.4; cursor:default">
@@ -717,7 +759,203 @@ option { background: var(--bg2); }
       </div>
     </div><!-- /page-marche -->
 
+    <!-- PAGE: BUDGET -->
+    <div id="page-budget" style="display:none; flex-direction:column; gap:16px">
+
+      <!-- Barre filtre -->
+      <div class="panel" style="overflow:visible">
+        <div class="filter-bar">
+          <span style="font-size:10px;color:var(--text3);letter-spacing:1px;white-space:nowrap">PROJET :</span>
+          <select id="budget-projet-sel" onchange="chargerBudget(this.value)"
+            style="background:var(--bg3);border:1px solid var(--border2);color:var(--text);padding:4px 8px;font-size:12px;font-family:var(--mono);border-radius:3px;outline:none;min-width:280px">
+            <option value="">— Choisir un projet —</option>
+          </select>
+          <button class="btn btn-ghost" style="font-size:11px;padding:4px 10px" onclick="ouvrirNouveauProjet()">+ Projet</button>
+          <button class="btn btn-ghost" style="font-size:11px;padding:4px 10px" id="btn-budget-poste" onclick="ouvrirNouveauPoste()" disabled>+ Poste</button>
+          <span style="flex:1"></span>
+          <button class="btn btn-ghost" style="font-size:11px;padding:4px 10px" id="btn-budget-import" onclick="ouvrirImportPDF()" disabled>⬆ Import PDF</button>
+          <button class="btn btn-ghost" style="font-size:11px;padding:4px 10px" id="btn-budget-csv" onclick="exportBudgetCSV()" disabled>⬇ CSV</button>
+        </div>
+      </div>
+
+      <!-- KPIs -->
+      <div class="kpi-row" id="budget-kpis" style="grid-template-columns:repeat(4,1fr)">
+        <div class="kpi-card"><div class="kpi-label">Budget total</div><div class="kpi-value" style="font-size:20px;color:var(--text3)">—</div></div>
+        <div class="kpi-card"><div class="kpi-label">Engagé</div><div class="kpi-value" style="font-size:20px;color:var(--text3)">—</div></div>
+        <div class="kpi-card"><div class="kpi-label">Payé</div><div class="kpi-value" style="font-size:20px;color:var(--text3)">—</div></div>
+        <div class="kpi-card"><div class="kpi-label">Écart</div><div class="kpi-value" style="font-size:20px;color:var(--text3)">—</div></div>
+      </div>
+
+      <!-- Postes -->
+      <div class="panel">
+        <div class="panel-header" style="gap:12px">
+          <span class="panel-title">Postes budgétaires</span>
+          <div style="display:flex;gap:4px">
+            <button class="year-btn active" id="bft-all" onclick="budgetFiltreType('',this)">Tous</button>
+            <button class="year-btn" id="bft-P" onclick="budgetFiltreType('P',this)" style="color:var(--green);border-color:color-mix(in srgb,var(--green) 40%,transparent)">P Payé</button>
+            <button class="year-btn" id="bft-E" onclick="budgetFiltreType('E',this)" style="color:var(--yellow);border-color:color-mix(in srgb,var(--yellow) 40%,transparent)">E Engagé</button>
+            <button class="year-btn" id="bft-C" onclick="budgetFiltreType('C',this)" style="color:var(--accent2);border-color:color-mix(in srgb,var(--accent2) 40%,transparent)">C Contrat</button>
+            <button class="year-btn" id="bft-X" onclick="budgetFiltreType('X',this)" style="color:var(--red);border-color:color-mix(in srgb,var(--red) 40%,transparent)">X Extra</button>
+          </div>
+        </div>
+        <div id="budget-postes-container">
+          <div style="color:var(--text3);font-size:12px;padding:32px;text-align:center">Choisir un projet pour afficher les postes</div>
+        </div>
+      </div>
+
+    </div><!-- /page-budget -->
+
   </main>
+</div>
+
+<!-- ═══ MODALS BUDGET ════════════════════════════════════ -->
+
+<!-- Nouveau projet -->
+<div class="modal-overlay" id="budget-projet-modal">
+  <div class="modal-box" style="max-width:420px">
+    <div class="modal-head">
+      <span class="modal-title">Nouveau projet</span>
+      <button class="btn btn-ghost" style="padding:4px 10px;font-size:12px" onclick="fermerModal('budget-projet-modal')">✕</button>
+    </div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:14px">
+      <div>
+        <div style="font-size:11px;color:var(--text2);margin-bottom:4px">Identifiant projet (ex: S-26-010)</div>
+        <input id="bp-pid" type="text" placeholder="S-26-010" class="input-field" style="width:100%">
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--text2);margin-bottom:4px">Budget total ($)</div>
+        <input id="bp-total" type="number" placeholder="0" class="input-field" style="width:100%">
+      </div>
+      <button class="btn" onclick="sauverProjetBudget()">Créer</button>
+    </div>
+  </div>
+</div>
+
+<!-- Nouveau / modifier poste -->
+<div class="modal-overlay" id="budget-poste-modal">
+  <div class="modal-box" style="max-width:420px">
+    <div class="modal-head">
+      <span class="modal-title" id="bpo-modal-titre">Nouveau poste</span>
+      <button class="btn btn-ghost" style="padding:4px 10px;font-size:12px" onclick="fermerModal('budget-poste-modal')">✕</button>
+    </div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:14px">
+      <input type="hidden" id="bpo-id">
+      <div>
+        <div style="font-size:11px;color:var(--text2);margin-bottom:4px">Code MasterFormat (ex: 03 30 00)</div>
+        <input id="bpo-code" type="text" placeholder="03 30 00" class="input-field" style="width:100%">
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--text2);margin-bottom:4px">Nom du poste</div>
+        <input id="bpo-nom" type="text" placeholder="Béton structural" class="input-field" style="width:100%">
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--text2);margin-bottom:4px">Budget prévu ($)</div>
+        <input id="bpo-budget" type="number" placeholder="0" class="input-field" style="width:100%">
+      </div>
+      <button class="btn" onclick="sauverPosteBudget()">Sauvegarder</button>
+    </div>
+  </div>
+</div>
+
+<!-- Ajouter / modifier dépense -->
+<div class="modal-overlay" id="budget-dep-modal">
+  <div class="modal-box" style="max-width:500px">
+    <div class="modal-head">
+      <span class="modal-title" id="bdep-modal-titre">Nouvelle dépense</span>
+      <button class="btn btn-ghost" style="padding:4px 10px;font-size:12px" onclick="fermerModal('budget-dep-modal')">✕</button>
+    </div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:12px">
+      <input type="hidden" id="bdep-id">
+      <input type="hidden" id="bdep-poste-id">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div>
+          <div style="font-size:11px;color:var(--text2);margin-bottom:4px">Type</div>
+          <select id="bdep-type" class="input-field" style="width:100%">
+            <option value="P">P — Payé</option>
+            <option value="E">E — Engagé</option>
+            <option value="C">C — Contrat</option>
+            <option value="X">X — Extra</option>
+          </select>
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--text2);margin-bottom:4px">Date</div>
+          <input id="bdep-date" type="date" class="input-field" style="width:100%">
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div>
+          <div style="font-size:11px;color:var(--text2);margin-bottom:4px">Référence (# facture)</div>
+          <input id="bdep-ref" type="text" placeholder="FAC-2026-001" class="input-field" style="width:100%">
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--text2);margin-bottom:4px">Montant ($)</div>
+          <input id="bdep-montant" type="number" placeholder="0" class="input-field" style="width:100%">
+        </div>
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--text2);margin-bottom:4px">Fournisseur</div>
+        <input id="bdep-fournisseur" type="text" placeholder="Nom du fournisseur" class="input-field" style="width:100%">
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--text2);margin-bottom:4px">Détail</div>
+        <input id="bdep-detail" type="text" placeholder="Description de la dépense" class="input-field" style="width:100%">
+      </div>
+      <button class="btn" onclick="sauverDepenseBudget()">Sauvegarder</button>
+    </div>
+  </div>
+</div>
+
+<!-- Déplacer dépense -->
+<div class="modal-overlay" id="budget-deplacer-modal">
+  <div class="modal-box" style="max-width:380px">
+    <div class="modal-head">
+      <span class="modal-title">Déplacer la dépense</span>
+      <button class="btn btn-ghost" style="padding:4px 10px;font-size:12px" onclick="fermerModal('budget-deplacer-modal')">✕</button>
+    </div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:14px">
+      <input type="hidden" id="bdep-deplacer-id">
+      <div>
+        <div style="font-size:11px;color:var(--text2);margin-bottom:4px">Déplacer vers le poste</div>
+        <select id="bdep-deplacer-poste" class="input-field" style="width:100%"></select>
+      </div>
+      <button class="btn" onclick="confirmerDeplacerDep()">Déplacer</button>
+    </div>
+  </div>
+</div>
+
+<!-- Import PDF -->
+<div class="modal-overlay" id="budget-import-modal">
+  <div class="modal-box" style="max-width:620px">
+    <div class="modal-head">
+      <span class="modal-title">Import PDF — Sélectionner les montants</span>
+      <button class="btn btn-ghost" style="padding:4px 10px;font-size:12px" onclick="fermerModal('budget-import-modal')">✕</button>
+    </div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:14px">
+      <div id="budget-import-upload" style="display:flex;flex-direction:column;gap:10px">
+        <div style="font-size:11px;color:var(--text2)">Sélectionner un PDF de facture ou de rapport de coûts</div>
+        <input type="file" id="budget-import-file" accept=".pdf"
+          style="color:var(--text);font-family:var(--mono);font-size:12px"
+          onchange="analyserPDF(this)">
+      </div>
+      <div id="budget-import-loading" style="display:none;color:var(--text3);font-size:12px">Analyse en cours…</div>
+      <div id="budget-import-results" style="display:none">
+        <div style="font-size:11px;color:var(--text2);margin-bottom:8px">Sélectionner les lignes à importer :</div>
+        <div id="budget-import-lignes" style="max-height:280px;overflow-y:auto;display:flex;flex-direction:column;gap:4px"></div>
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <select id="budget-import-poste" class="input-field" style="flex:1">
+            <option value="">— Choisir poste destination —</option>
+          </select>
+          <select id="budget-import-type" class="input-field">
+            <option value="P">P — Payé</option>
+            <option value="E">E — Engagé</option>
+            <option value="C">C — Contrat</option>
+            <option value="X">X — Extra</option>
+          </select>
+          <button class="btn" onclick="importerLignesPDF()">Importer</button>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- ═══ MODAL : DÉTAIL AO ═══════════════════════════════ -->
@@ -945,10 +1183,11 @@ async function checkServer() {
 function showPage(page) {
   document.querySelectorAll('[id^="page-"]').forEach(el => el.style.display = 'none');
   const el = document.getElementById('page-' + page);
-  el.style.display = page === 'marche' ? 'flex' : 'block';
+  el.style.display = ['marche','budget'].includes(page) ? 'flex' : 'block';
   document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
   event.currentTarget.classList.add('active');
   if (page === 'marche') loadMarche();
+  if (page === 'budget') loadBudgetPage();
 }
 
 // ── PROJETS ─────────────────────────────────────────────
@@ -1631,6 +1870,376 @@ function toast(msg, type = 'info') {
   t.textContent = msg;
   t.className = 'show ' + type;
   setTimeout(() => { t.className = ''; }, 3500);
+}
+
+// ── BUDGET ────────────────────────────────────────────────
+let _budgetProjetActif = '';
+let _budgetData        = null;
+let _budgetTypeFiltre  = '';
+let _expandedPostes    = new Set();
+let _depStore          = {};
+
+async function loadBudgetPage() {
+  try {
+    const r = await fetch(`${API}/budget/projets`);
+    const d = await r.json();
+    const sel = document.getElementById('budget-projet-sel');
+    const ancien = sel.value;
+    sel.innerHTML = '<option value="">— Choisir un projet —</option>' +
+      (d.projets||[]).map(p => `<option value="${esc(p.projet_id)}">${esc(p.projet_id)}</option>`).join('');
+    if (ancien) { sel.value = ancien; chargerBudget(ancien); }
+  } catch(e) { console.error(e); }
+}
+
+async function chargerBudget(pid) {
+  _budgetProjetActif = pid;
+  const actif = !!pid;
+  document.getElementById('btn-budget-poste').disabled  = !actif;
+  document.getElementById('btn-budget-import').disabled = !actif;
+  document.getElementById('btn-budget-csv').disabled    = !actif;
+  if (!pid) {
+    renderBudgetKPIs(null);
+    document.getElementById('budget-postes-container').innerHTML =
+      '<div style="color:var(--text3);font-size:12px;padding:32px;text-align:center">Choisir un projet pour afficher les postes</div>';
+    return;
+  }
+  try {
+    const r = await fetch(`${API}/budget/projet/${encodeURIComponent(pid)}`);
+    const d = await r.json();
+    if (d.error) { toast(d.error, 'error'); return; }
+    _budgetData = d;
+    _depStore = {};
+    d.postes.forEach(po => po.depenses.forEach(dep => { _depStore[dep.id] = {...dep, poste_id: po.id}; }));
+    renderBudgetKPIs(d);
+    renderBudgetPostes(d);
+  } catch(e) { toast('Erreur budget', 'error'); console.error(e); }
+}
+
+function renderBudgetKPIs(data) {
+  const el = document.getElementById('budget-kpis');
+  if (!data) {
+    el.innerHTML = `
+      <div class="kpi-card"><div class="kpi-label">Budget total</div><div class="kpi-value" style="font-size:20px;color:var(--text3)">—</div></div>
+      <div class="kpi-card"><div class="kpi-label">Engagé</div><div class="kpi-value" style="font-size:20px;color:var(--text3)">—</div></div>
+      <div class="kpi-card"><div class="kpi-label">Payé</div><div class="kpi-value" style="font-size:20px;color:var(--text3)">—</div></div>
+      <div class="kpi-card"><div class="kpi-label">Écart</div><div class="kpi-value" style="font-size:20px;color:var(--text3)">—</div></div>`;
+    return;
+  }
+  const p = data.projet;
+  let totalEngage = 0, totalPaye = 0;
+  data.postes.forEach(po => {
+    po.depenses.forEach(d => {
+      if (['E','C','X'].includes(d.type)) totalEngage += d.montant;
+      if (d.type === 'P') totalPaye += d.montant;
+    });
+  });
+  const ecart = p.budget_total - totalEngage;
+  const ecartColor = ecart >= 0 ? 'var(--green)' : 'var(--red)';
+  el.innerHTML = `
+    <div class="kpi-card"><div class="kpi-label">Budget total</div><div class="kpi-value" style="font-size:18px">$${fmtMontant(p.budget_total)}</div></div>
+    <div class="kpi-card"><div class="kpi-label">Engagé</div><div class="kpi-value" style="font-size:18px;color:var(--yellow)">$${fmtMontant(totalEngage)}</div></div>
+    <div class="kpi-card"><div class="kpi-label">Payé</div><div class="kpi-value" style="font-size:18px;color:var(--green)">$${fmtMontant(totalPaye)}</div></div>
+    <div class="kpi-card"><div class="kpi-label">Écart</div><div class="kpi-value" style="font-size:18px;color:${ecartColor}">${ecart>=0?'+':''}$${fmtMontant(Math.abs(ecart))}</div></div>`;
+}
+
+function renderBudgetPostes(data) {
+  const container = document.getElementById('budget-postes-container');
+  if (!data || !data.postes.length) {
+    container.innerHTML = '<div style="color:var(--text3);font-size:12px;padding:32px;text-align:center">Aucun poste — cliquer "+ Poste" pour commencer</div>';
+    return;
+  }
+  container.innerHTML = data.postes.map(po => {
+    const deps = _budgetTypeFiltre
+      ? po.depenses.filter(d => d.type === _budgetTypeFiltre)
+      : po.depenses;
+    const engage = po.depenses.filter(d => ['E','C','X'].includes(d.type)).reduce((s,d) => s+d.montant, 0);
+    const paye   = po.depenses.filter(d => d.type === 'P').reduce((s,d) => s+d.montant, 0);
+    const ecart  = po.budget_prevu - engage;
+    const ecartColor = ecart >= 0 ? 'var(--green)' : 'var(--red)';
+    const depRows = deps.length ? deps.map(dep => `
+      <tr id="bdep-${dep.id}">
+        <td style="color:var(--text3);font-size:11px;white-space:nowrap">${dep.date_depense||'—'}</td>
+        <td style="text-align:center"><span class="type-badge type-${dep.type}">${dep.type}</span></td>
+        <td style="font-size:11px">${esc(dep.reference)||'—'}</td>
+        <td style="font-size:11px;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(dep.fournisseur)}">${esc(dep.fournisseur)||'—'}</td>
+        <td style="font-size:11px;max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(dep.detail)}">${esc(dep.detail)||'—'}</td>
+        <td style="text-align:right;font-weight:500">$${fmtMontant(dep.montant)}</td>
+        <td>
+          <div style="display:flex;gap:4px;justify-content:flex-end">
+            <button class="link-btn" title="Modifier"   onclick="ouvrirModifDep(${dep.id})">✎</button>
+            <button class="link-btn" title="Déplacer"   onclick="ouvrirDeplacerDep(${dep.id},${po.id})">⇄</button>
+            <button class="link-btn" title="Supprimer" style="color:var(--red)" onclick="supprimerDep(${dep.id})">✕</button>
+          </div>
+        </td>
+      </tr>`).join('')
+    : `<tr><td colspan="7" style="color:var(--text3);font-size:11px;padding:10px 16px">Aucune dépense${_budgetTypeFiltre ? ' de type ' + _budgetTypeFiltre : ''}</td></tr>`;
+
+    return `
+    <div class="budget-poste" id="bpo-${po.id}">
+      <div class="budget-poste-header" onclick="togglePoste(${po.id})">
+        <span class="bpo-toggle" id="bpo-toggle-${po.id}">▶</span>
+        <span class="bpo-code">${esc(po.code)}</span>
+        <span class="bpo-nom">${esc(po.nom)}</span>
+        <div class="bpo-stats">
+          <span>Budget <strong>$${fmtMontant(po.budget_prevu)}</strong></span>
+          <span>Engagé <strong style="color:var(--yellow)">$${fmtMontant(engage)}</strong></span>
+          <span>Payé <strong style="color:var(--green)">$${fmtMontant(paye)}</strong></span>
+          <span>Écart <strong style="color:${ecartColor}">${ecart>=0?'+':''}$${fmtMontant(Math.abs(ecart))}</strong></span>
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0" onclick="event.stopPropagation()">
+          <button class="btn btn-ghost" style="font-size:10px;padding:3px 8px" onclick="ouvrirModifPoste(${po.id},'${esc(po.code).replace(/'/g,"\\'")}','${esc(po.nom).replace(/'/g,"\\'")}',${po.budget_prevu})">✎</button>
+          <button class="btn btn-ghost" style="font-size:10px;padding:3px 8px;color:var(--accent)" onclick="ouvrirAjoutDep(${po.id})">+ Dépense</button>
+        </div>
+      </div>
+      <div class="budget-poste-body" id="bpo-body-${po.id}" style="display:none">
+        <table class="projets-table" style="margin:0">
+          <thead><tr>
+            <th style="width:95px">Date</th>
+            <th style="width:55px;text-align:center">Type</th>
+            <th style="width:110px">Réf.</th>
+            <th>Fournisseur</th>
+            <th>Détail</th>
+            <th style="text-align:right;width:110px">Montant</th>
+            <th style="width:80px"></th>
+          </tr></thead>
+          <tbody>${depRows}</tbody>
+        </table>
+      </div>
+    </div>`;
+  }).join('');
+
+  // Restore expanded state
+  _expandedPostes.forEach(id => {
+    const body   = document.getElementById(`bpo-body-${id}`);
+    const toggle = document.getElementById(`bpo-toggle-${id}`);
+    if (body)   { body.style.display = 'block'; }
+    if (toggle) { toggle.textContent = '▼'; }
+  });
+}
+
+function togglePoste(id) {
+  const body   = document.getElementById(`bpo-body-${id}`);
+  const toggle = document.getElementById(`bpo-toggle-${id}`);
+  if (!body) return;
+  const ouvert = body.style.display !== 'none';
+  body.style.display   = ouvert ? 'none' : 'block';
+  toggle.textContent   = ouvert ? '▶' : '▼';
+  if (ouvert) _expandedPostes.delete(id); else _expandedPostes.add(id);
+}
+
+function budgetFiltreType(type, el) {
+  _budgetTypeFiltre = type;
+  document.querySelectorAll('[id^="bft-"]').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  if (_budgetData) renderBudgetPostes(_budgetData);
+}
+
+// ── Nouveau projet ──
+function ouvrirNouveauProjet() {
+  document.getElementById('bp-pid').value   = '';
+  document.getElementById('bp-total').value = '';
+  document.getElementById('budget-projet-modal').classList.add('open');
+}
+
+async function sauverProjetBudget() {
+  const pid   = document.getElementById('bp-pid').value.trim();
+  const total = document.getElementById('bp-total').value;
+  if (!pid) { toast('Identifiant requis', 'error'); return; }
+  const r = await fetch(`${API}/budget/projet`, { method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ projet_id: pid, budget_total: parseFloat(total)||0 }) });
+  const d = await r.json();
+  if (d.error) { toast(d.error, 'error'); return; }
+  fermerModal('budget-projet-modal');
+  await loadBudgetPage();
+  document.getElementById('budget-projet-sel').value = pid;
+  chargerBudget(pid);
+  toast('Projet créé');
+}
+
+// ── Nouveau/modifier poste ──
+function ouvrirNouveauPoste() {
+  document.getElementById('bpo-id').value      = '';
+  document.getElementById('bpo-code').value    = '';
+  document.getElementById('bpo-nom').value     = '';
+  document.getElementById('bpo-budget').value  = '';
+  document.getElementById('bpo-modal-titre').textContent = 'Nouveau poste';
+  document.getElementById('budget-poste-modal').classList.add('open');
+}
+
+function ouvrirModifPoste(id, code, nom, budget) {
+  document.getElementById('bpo-id').value      = id;
+  document.getElementById('bpo-code').value    = code;
+  document.getElementById('bpo-nom').value     = nom;
+  document.getElementById('bpo-budget').value  = budget;
+  document.getElementById('bpo-modal-titre').textContent = 'Modifier poste';
+  document.getElementById('budget-poste-modal').classList.add('open');
+}
+
+async function sauverPosteBudget() {
+  const id     = document.getElementById('bpo-id').value;
+  const code   = document.getElementById('bpo-code').value.trim();
+  const nom    = document.getElementById('bpo-nom').value.trim();
+  const budget = parseFloat(document.getElementById('bpo-budget').value) || 0;
+  if (!code || !nom) { toast('Code et nom requis', 'error'); return; }
+  const body = { projet_id: _budgetProjetActif, code, nom, budget_prevu: budget };
+  if (id) body.id = parseInt(id);
+  const r = await fetch(`${API}/budget/poste`, { method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(body) });
+  const d = await r.json();
+  if (d.error) { toast(d.error, 'error'); return; }
+  fermerModal('budget-poste-modal');
+  chargerBudget(_budgetProjetActif);
+  toast('Poste sauvegardé');
+}
+
+// ── Ajouter/modifier dépense ──
+function ouvrirAjoutDep(posteId) {
+  document.getElementById('bdep-id').value          = '';
+  document.getElementById('bdep-poste-id').value    = posteId;
+  document.getElementById('bdep-type').value        = 'P';
+  document.getElementById('bdep-date').value        = new Date().toISOString().slice(0,10);
+  document.getElementById('bdep-ref').value         = '';
+  document.getElementById('bdep-fournisseur').value = '';
+  document.getElementById('bdep-detail').value      = '';
+  document.getElementById('bdep-montant').value     = '';
+  document.getElementById('bdep-modal-titre').textContent = 'Nouvelle dépense';
+  document.getElementById('budget-dep-modal').classList.add('open');
+}
+
+function ouvrirModifDep(depId) {
+  const dep = _depStore[depId];
+  if (!dep) return;
+  document.getElementById('bdep-id').value          = dep.id;
+  document.getElementById('bdep-poste-id').value    = dep.poste_id;
+  document.getElementById('bdep-type').value        = dep.type;
+  document.getElementById('bdep-date').value        = dep.date_depense || '';
+  document.getElementById('bdep-ref').value         = dep.reference || '';
+  document.getElementById('bdep-fournisseur').value = dep.fournisseur || '';
+  document.getElementById('bdep-detail').value      = dep.detail || '';
+  document.getElementById('bdep-montant').value     = dep.montant;
+  document.getElementById('bdep-modal-titre').textContent = 'Modifier dépense';
+  document.getElementById('budget-dep-modal').classList.add('open');
+}
+
+async function sauverDepenseBudget() {
+  const id     = document.getElementById('bdep-id').value;
+  const poid   = document.getElementById('bdep-poste-id').value;
+  const montant= parseFloat(document.getElementById('bdep-montant').value);
+  if (!montant || montant <= 0) { toast('Montant requis', 'error'); return; }
+  const body = {
+    poste_id: parseInt(poid), projet_id: _budgetProjetActif,
+    type:        document.getElementById('bdep-type').value,
+    date_depense:document.getElementById('bdep-date').value,
+    reference:   document.getElementById('bdep-ref').value,
+    fournisseur: document.getElementById('bdep-fournisseur').value,
+    detail:      document.getElementById('bdep-detail').value,
+    montant,
+  };
+  if (id) body.id = parseInt(id);
+  const r = await fetch(`${API}/budget/depense`, { method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(body) });
+  const d = await r.json();
+  if (d.error) { toast(d.error, 'error'); return; }
+  fermerModal('budget-dep-modal');
+  chargerBudget(_budgetProjetActif);
+  toast('Dépense sauvegardée');
+}
+
+async function supprimerDep(depId) {
+  if (!confirm('Supprimer cette dépense ?')) return;
+  const r = await fetch(`${API}/budget/depense/${depId}`, { method:'DELETE' });
+  const d = await r.json();
+  if (d.error) { toast(d.error, 'error'); return; }
+  chargerBudget(_budgetProjetActif);
+  toast('Dépense supprimée');
+}
+
+// ── Déplacer dépense ──
+function ouvrirDeplacerDep(depId, posteActuelId) {
+  document.getElementById('bdep-deplacer-id').value = depId;
+  const sel = document.getElementById('bdep-deplacer-poste');
+  sel.innerHTML = (_budgetData?.postes||[])
+    .filter(po => po.id !== posteActuelId)
+    .map(po => `<option value="${po.id}">${esc(po.code)} — ${esc(po.nom)}</option>`).join('');
+  document.getElementById('budget-deplacer-modal').classList.add('open');
+}
+
+async function confirmerDeplacerDep() {
+  const depId = document.getElementById('bdep-deplacer-id').value;
+  const poId  = document.getElementById('bdep-deplacer-poste').value;
+  if (!poId) { toast('Choisir un poste', 'error'); return; }
+  const r = await fetch(`${API}/budget/depense/${depId}/deplacer`, { method:'POST',
+    headers:{'Content-Type':'application/json'}, body: JSON.stringify({ poste_id: parseInt(poId) }) });
+  const d = await r.json();
+  if (d.error) { toast(d.error, 'error'); return; }
+  fermerModal('budget-deplacer-modal');
+  chargerBudget(_budgetProjetActif);
+  toast('Dépense déplacée');
+}
+
+// ── Export CSV ──
+function exportBudgetCSV() {
+  if (!_budgetProjetActif) return;
+  window.open(`${API}/budget/export/${encodeURIComponent(_budgetProjetActif)}`);
+}
+
+// ── Import PDF ──
+function ouvrirImportPDF() {
+  document.getElementById('budget-import-file').value = '';
+  document.getElementById('budget-import-loading').style.display = 'none';
+  document.getElementById('budget-import-results').style.display = 'none';
+  document.getElementById('budget-import-upload').style.display  = 'flex';
+  // Populate poste selector
+  const sel = document.getElementById('budget-import-poste');
+  sel.innerHTML = '<option value="">— Choisir poste —</option>' +
+    (_budgetData?.postes||[]).map(po => `<option value="${po.id}">${esc(po.code)} — ${esc(po.nom)}</option>`).join('');
+  document.getElementById('budget-import-modal').classList.add('open');
+}
+
+async function analyserPDF(input) {
+  if (!input.files.length) return;
+  document.getElementById('budget-import-loading').style.display = 'block';
+  document.getElementById('budget-import-results').style.display = 'none';
+  const fd = new FormData();
+  fd.append('file', input.files[0]);
+  try {
+    const r = await fetch(`${API}/budget/import_pdf`, { method:'POST', body: fd });
+    const d = await r.json();
+    document.getElementById('budget-import-loading').style.display = 'none';
+    if (d.error) { toast(d.error, 'error'); return; }
+    const lignes = d.lignes || [];
+    document.getElementById('budget-import-lignes').innerHTML = lignes.length
+      ? lignes.map((l, i) => `
+          <label style="display:flex;align-items:center;gap:10px;padding:6px 8px;background:var(--bg3);border-radius:3px;cursor:pointer;font-size:11px">
+            <input type="checkbox" data-montant="${l.montant}" data-ligne="${esc(l.ligne)}" checked style="flex-shrink:0">
+            <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(l.ligne)}">${esc(l.ligne)}</span>
+            <strong style="flex-shrink:0;color:var(--accent)">$${fmtMontant(l.montant)}</strong>
+          </label>`).join('')
+      : '<div style="color:var(--text3);font-size:11px;padding:8px">Aucun montant détecté dans ce PDF</div>';
+    document.getElementById('budget-import-results').style.display = 'block';
+  } catch(e) {
+    document.getElementById('budget-import-loading').style.display = 'none';
+    toast('Erreur analyse PDF', 'error');
+  }
+}
+
+async function importerLignesPDF() {
+  const posteId = document.getElementById('budget-import-poste').value;
+  const type    = document.getElementById('budget-import-type').value;
+  if (!posteId) { toast('Choisir un poste destination', 'error'); return; }
+  const checked = [...document.querySelectorAll('#budget-import-lignes input[type=checkbox]:checked')];
+  if (!checked.length) { toast('Aucune ligne sélectionnée', 'error'); return; }
+  for (const cb of checked) {
+    await fetch(`${API}/budget/depense`, { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        poste_id: parseInt(posteId), projet_id: _budgetProjetActif, type,
+        detail: cb.dataset.ligne.slice(0, 100), montant: parseFloat(cb.dataset.montant),
+        date_depense: new Date().toISOString().slice(0,10)
+      }) });
+  }
+  fermerModal('budget-import-modal');
+  chargerBudget(_budgetProjetActif);
+  toast(`${checked.length} dépense(s) importée(s)`);
 }
 </script>
 </body>
