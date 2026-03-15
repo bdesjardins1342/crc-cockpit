@@ -399,13 +399,18 @@ def seao_marge(body: dict):
 
 @app.post("/seao/sync")
 def seao_sync(background_tasks: BackgroundTasks):
+    log_path = os.path.join(COCKPIT_DIR, "logs", "sync_seao.log")
     def run_sync():
+        with open(log_path, "a", encoding="utf-8") as log:
+            log.write(f"\n[{datetime.now().isoformat(timespec='seconds')}] Début sync API\n")
         subprocess.run(
-            ["python", os.path.join(COCKPIT_DIR, "seao_scraper.py"), "--sync", "--max", "10"],
-            cwd=COCKPIT_DIR, capture_output=True
+            ["python", os.path.join(COCKPIT_DIR, "seao_scraper.py"), "--sync"],
+            cwd=COCKPIT_DIR,
+            stdout=open(log_path, "a", encoding="utf-8"),
+            stderr=subprocess.STDOUT,
         )
     background_tasks.add_task(run_sync)
-    return {"ok": True, "message": "Sync SEAO lancé en arrière-plan (10 fichiers)"}
+    return {"status": "started", "message": "Sync SEAO lancé en arrière-plan"}
 
 
 app.mount("/static", StaticFiles(directory=COCKPIT_DIR), name="static")
