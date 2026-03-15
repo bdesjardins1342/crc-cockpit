@@ -301,79 +301,119 @@ def parse_release(r: dict, fichier_source: str) -> tuple[dict | None, list[dict]
         "fichier_source": fichier_source,
     }
 
-    # ── Index NEQ → nom depuis parties et tenderers ──────────────────────────
-    neq_to_nom: dict[str, str] = {}
+    # ── Helpers ───────────────────────────────────────────────────────────────
+    def _strip_fo(s: str) -> str:
+        return s[3:] if s.startswith("FO-") else s
+
+    def _est_neq(s: str) -> bool:
+        """Un NEQ québécois est exactement 10 chiffres."""
+        return len(s) == 10 and s.isdigit()
+
+    # ── Index id_stripped → nom  ET  id_interne → vrai_NEQ ──────────────────
+    # Vieux format : party["id"]="FO-1097337", party["details"]["NEQ"]="1148164123"
+    # Nouveau fmt  : party["id"]="FO-1148164123", party["details"]["neq"]="1148164123"
+    id_to_nom: dict[str, str] = {}
+    id_to_neq: dict[str, str] = {}   # id_interne → vrai NEQ (10 chiffres)
+
     for p in parties:
-        pid  = p.get("id", "")
+        pid  = _strip_fo(p.get("id", ""))
         pnom = p.get("name", "")
+        det  = p.get("details", {})
+        pneq = det.get("NEQ") or det.get("neq") or ""   # clé varie selon l'année
         if pid and pnom:
-            neq_to_nom[pid.replace("FO-", "")] = pnom
+            id_to_nom[pid] = pnom
+        if pneq and pnom:
+            id_to_nom[pneq] = pnom          # aussi indexé par vrai NEQ
+        if pid and pneq and pid != pneq:
+            id_to_neq[pid] = pneq           # résolution id_interne → NEQ réel
+
     for t in tender.get("tenderers", []):
-        tid  = t.get("id", "")
+        tid  = _strip_fo(t.get("id", ""))
         tnom = t.get("name", "")
         if tid and tnom:
-            neq_to_nom[tid.replace("FO-", "")] = tnom
+            id_to_nom.setdefault(tid, tnom)  # ne pas écraser les données parties
 
     # ── Gagnants depuis awards ────────────────────────────────────────────────
-    gagnants_neq: set[str] = set()
+    gagnants_ids: set[str] = set()
     for award in r.get("awards", []):
         for s in award.get("suppliers", []):
-            sid = s.get("id", "")
-            gagnants_neq.add(sid.replace("FO-", ""))
+            key = _strip_fo(s.get("id", ""))
+            gagnants_ids.add(key)
+            if key in id_to_neq:
+                gagnants_ids.add(id_to_neq[key])   # aussi l'id_interne → NEQ résolu
+
+    # ── Résolution d'un id brut → NEQ stocké ─────────────────────────────────
+    def _resoudre_neq(raw: str) -> str:
+        if _est_neq(raw):
+            return raw                        # déjà un NEQ réel (format 2024+)
+        if raw in id_to_neq:
+            return id_to_neq[raw]             # résolu via party["details"]["NEQ"]
+        # Fallback nom : si la party est CRC, utiliser son NEQ connu dans les données
+        nom = id_to_nom.get(raw, "").upper()
+        if "CHAMPAGNE" in nom:
+            neq_via_nom = next(
+                (v for k, v in id_to_neq.items() if "CHAMPAGNE" in id_to_nom.get(k, "").upper()),
+                None
+            )
+            if neq_via_nom:
+                return neq_via_nom
+        return raw                            # conserver l'id_interne en dernier recours
 
     # ── Soumissions depuis bids (format réel SEAO) ────────────────────────────
-    # Format : [{"id": "FO-{NEQ}", "value": float, "valueUnit": "1"}, ...]
     soumissions = []
     bids_raw = r.get("bids", [])
 
     if bids_raw:
         parsed = []
         for bid in bids_raw:
-            bid_id  = bid.get("id", "")
-            neq     = bid_id.replace("FO-", "") if bid_id.startswith("FO-") else bid_id
-            v       = bid.get("value")
+            raw  = _strip_fo(bid.get("id", ""))
+            neq  = _resoudre_neq(raw)
+            nom  = id_to_nom.get(neq) or id_to_nom.get(raw, "")
+            v    = bid.get("value")
             montant = None
             if v is not None:
                 try:
                     montant = float(v)
                 except (TypeError, ValueError):
                     pass
-            parsed.append({"neq": neq, "montant": montant})
+            est_gagnant = raw in gagnants_ids or neq in gagnants_ids
+            parsed.append({"neq": neq, "nom": nom, "montant": montant,
+                           "gagnant": 1 if est_gagnant else 0})
 
         # Trier par montant croissant (None en dernier → rang le plus élevé)
         parsed.sort(key=lambda x: (x["montant"] is None, x["montant"] or 0))
 
         for rang, b in enumerate(parsed, 1):
             soumissions.append({
-                "ocid":           ocid,
-                "rang":           rang,
-                "soumissionnaire": neq_to_nom.get(b["neq"], ""),
-                "neq":            b["neq"],
-                "montant":        b["montant"],
-                "gagnant":        1 if b["neq"] in gagnants_neq else 0,
+                "ocid":            ocid,
+                "rang":            rang,
+                "soumissionnaire": b["nom"],
+                "neq":             b["neq"],
+                "montant":         b["montant"],
+                "gagnant":         b["gagnant"],
             })
 
     else:
         # Fallback pour AOs actifs (pas encore de bids) : tenderers sans montant
         for i, t in enumerate(tender.get("tenderers", []), 1):
-            sid = t.get("id", "")
-            neq = sid.replace("FO-", "") if sid.startswith("FO-") else ""
-            nom = t.get("name", "") or neq_to_nom.get(neq, "")
-            # Montant depuis awards si disponible
+            raw = _strip_fo(t.get("id", ""))
+            neq = _resoudre_neq(raw)
+            nom = t.get("name", "") or id_to_nom.get(neq) or id_to_nom.get(raw, "")
             montant_s = None
             for award in r.get("awards", []):
                 for s in award.get("suppliers", []):
-                    if s.get("id") == sid:
+                    if _strip_fo(s.get("id", "")) == raw:
                         av = award.get("value", {})
                         if av and av.get("amount"):
                             montant_s = float(av["amount"])
+            est_gagnant = raw in gagnants_ids or neq in gagnants_ids
             soumissions.append({
-                "ocid":           ocid,
-                "rang":           i,
+                "ocid":            ocid,
+                "rang":            i,
                 "soumissionnaire": nom,
-                "neq":            neq,
-                "montant":        montant_s,
-                "gagnant":        1 if neq in gagnants_neq else 0,
+                "neq":             neq,
+                "montant":         montant_s,
+                "gagnant":         1 if est_gagnant else 0,
             })
 
     return ao, soumissions
