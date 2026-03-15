@@ -1,172 +1,185 @@
 # CRC COCKPIT — Document de référence
-Version 1.1 — Mars 2026 | Benoit Desjardins | CRC | Montréal
+Version 1.2 — Mars 2026 | Benoit Desjardins | CRC | Montréal
 
 ---
 
 ## 1. Vision & Architecture
 
-**Concept** : Système d'automatisation pour EG — analyse soumissions, suivi projets, gestion documentaire. Interface principale : Cowork (commandes à distance) + cockpit web local.
+**Concept** : Système d'automatisation pour EG — analyse soumissions, suivi projets, intelligence marché. Interface principale : Cowork (commandes à distance) + cockpit web local sur `http://localhost:8000`.
 ```
 [Benoit à distance] → [Cowork] → [Ordi dédié local]
-  ├── Cockpit HTML (localhost)
-  ├── Scripts Python (skills)
-  ├── Base de données SQLite
-  └── Intégrations (email, SEAO, fichiers)
+  ├── Cockpit HTML (http://localhost:8000)
+  ├── Scripts Python (analyser_soumission.py, seao_scraper.py)
+  ├── Serveur FastAPI (serveur_cockpit.py)
+  ├── Base de données SQLite (seao.db)
+  └── Intégrations (SEAO, fichiers projets)
 ```
 
 **Infrastructure installée :**
 - Chrome + Claude in Chrome ✅
-- Git + repo GitHub : https://github.com/bdesjardins1342/crc-cockpit.git ✅
+- Git + repo GitHub public : https://github.com/bdesjardins1342/crc-cockpit.git ✅
 - Node.js v24.14.0 ✅
 - Claude Code : `npm install -g @anthropic-ai/claude-code` ✅
 - ANTHROPIC_API_KEY : variable d'environnement permanente (User) ✅
+- FastAPI + uvicorn : `pip install fastapi uvicorn` ✅
 - Ollama : installé mais RETIRÉ — Python pur utilisé ⚠️
 
 **Racine projets** : `C:\Users\BenoitDesjardins\Documents\Claude\Projet 2026`
+**Racine cockpit** : `C:\Users\BenoitDesjardins\Documents\Claude\crc-cockpit`
+
+**Lancer le serveur :**
+```powershell
+cd C:\Users\BenoitDesjardins\Documents\Claude\crc-cockpit
+python -m uvicorn serveur_cockpit:app --reload --port 8000
+```
 
 ---
 
-## 2. Cockpit HTML
+## 2. Fichiers du repo crc-cockpit
 
-**Fichier** : `C:\Users\BenoitDesjardins\Documents\Claude\Projet 2026\cockpit.html`
+| Fichier | Rôle |
+|---------|------|
+| `cockpit v1.1.html` | Dashboard principal servi par FastAPI |
+| `serveur_cockpit.py` | Serveur FastAPI — routes analyse + SEAO |
+| `analyser_soumission.py` | Script d'analyse de dossiers AO |
+| `seao_scraper.py` | Scraper données ouvertes SEAO |
+| `seao.db` | Base SQLite — AOs, soumissions, mes données |
+| `sync_seao.bat` | Script batch pour sync hebdo |
+| `setup_tache_planifiee.bat` | Crée la tâche Windows Task Scheduler (1x admin) |
+| `logs/sync_seao.log` | Log des syncs automatiques |
+| `reference.md` | Ce fichier |
 
-**Design** : thème sombre industriel, header horloge live + statut Cowork, sidebar navigation, 4 KPIs, tableau AO, grille 6 skills, feed activité.
+---
 
-**Boutons à brancher (FastAPI local) :**
+## 3. Cockpit HTML — Pages
+
+**Navigation sidebar :**
+- **Analyser AO** — lancer analyse + voir projets récents
+- **Projets** — liste complète avec statuts
+- **Livrables** — consulter les .md générés avec rendu markdown
+- **Marché** — intelligence SEAO (nouveau)
+
+**Page Marché :**
+- Filtre par année (2023/24/25/26) ou date custom
+- Bouton "Mes AOs" — filtre sur CRC seulement
+- KPIs : AO en DB, mes soumissions, profit estimé, position moyenne
+- Tableau AO avec pastilles colorées (🟢 rang 1, 🟡 rang 2-3, 🔴 rang 4+)
+- Sidebar compétiteurs avec stats
+- Modal détail AO : tous les soumissionnaires, saisie montants manuels, saisie marge
+- Page paramètres (⚙) : mon NEQ, seuils, bouton sync manuel
+
+**Boutons à venir (FastAPI branché) :**
 | Bouton | Script |
 |--------|--------|
-| 📋 ANALYSER DOSSIER AO | analyser_soumission.py |
 | 🚨 VÉRIFIER ADDENDAS | analyser_soumission.py --addenda |
 | 📊 SUIVI SOUMISSIONS | suivre_soumissions.py |
 | 🏆 POST-MORTEM | postmortem.py |
 
 ---
 
-## 3. Structure des projets
+## 4. Module SEAO
 
-**Numérotation** : Soumissions `S-26-001`, Projets obtenus `P26001`
-**13 projets** : S-26-001 à S-26-023 + dossier "Non obtenu"
+### seao_scraper.py
 
-**Structure interne (ex: S-26-010) :**
+**Source données :** Données Québec — fichiers JSON hebdo (~15 Mo) et mensuel (~63 Mo)
+**Standard :** Open Contracting Data Standard (OCDS), depuis mars 2021
+**API catalogue :** `https://www.donneesquebec.ca/recherche/api/3/action/package_show?id=systeme-electronique-dappel-doffres-seao`
+
+**Filtres appliqués :**
+- Région : 04-Mauricie + 17-Centre-du-Québec (via FSA postal)
+- Catégorie : `mainProcurementCategory = "works"` (construction)
+
+**CLI :**
+```powershell
+python seao_scraper.py --sync          # télécharge nouveaux fichiers
+python seao_scraper.py --sync --max 5  # test sur 5 fichiers
+python seao_scraper.py --stats         # stats de la DB
+python seao_scraper.py --reset         # recrée la DB
 ```
-S-26-010 - Réaménagement Radio-oncologie CHAUR\
-  Addenda\ Administration\ Bon de commande\ CNESST\ Contrat\
-  Courriel & Correspondance\ DIRECTIVE ET ORDRE DE CHANGEMENT\
-  Échéancier\ Fiche technique\ Fin des travaux - Documents\
-  Liste intervenants\ Photos\ Plan & Devis\
-    01 - Devis Soumission\ 02 - Plans pour soumission\
-  QRT\ Régies Contrôlées\ Réquisition\ Soumission\
-  Soumissions reçues\ Visite etou réunion\
-  CRC-FORM-04 - Contrôle Budgétaire_V1.xlsm
+
+**Base de données seao.db :**
+```
+TABLE appels_offres : no_avis, titre, organisme, region,
+  date_ouverture, montant_estime, categorie, nb_soumissions
+
+TABLE soumissions : no_avis, rang, soumissionnaire, neq,
+  montant, montant_manuel, gagnant
+
+TABLE mes_projets : no_avis, ma_marge_pct, mon_montant, notes
+
+TABLE parametres : cle, valeur
+  mon_neq = '1180040314'
+  mon_nom = 'CONSTRUCTION RICHARD CHAMPAGNE INC.'
+  seuil_ecart_eleve = 5 (%)
+  marge_min_viable = 8 (%)
+```
+
+**Stats actuelles (sync complet) :**
+- 8,139 AO en DB | 925 actifs
+- 228 soumissions CRC | 64 gagnés — 28.1%
+- Position moyenne : #2.5
+- Historique depuis 2021
+
+**Sync automatique :**
+- Tâche Windows : chaque lundi 6h00
+- Créer : exécuter `setup_tache_planifiee.bat` en admin (1 seule fois)
+- Log : `logs/sync_seao.log`
+- Sync manuel depuis cockpit : bouton ↻ dans page Paramètres
+
+### Routes serveur SEAO
+```
+GET  /seao/dashboard         → KPIs + derniers AO
+GET  /seao/appels            → liste paginée (filtres: annee, date, mes_ao)
+GET  /seao/appel/{no_avis}   → détail + soumissions + mes données
+GET  /seao/competiteur/{neq} → stats compétiteur
+GET  /seao/competiteurs      → top compétiteurs région 04/17
+GET  /seao/parametres        → lire paramètres
+POST /seao/parametres        → sauvegarder paramètres
+POST /seao/marge             → saisir marge + montant sur un AO
+POST /seao/sync              → lancer sync en arrière-plan
 ```
 
 ---
 
-## 4. Script analyser_soumission.py
+## 5. Script analyser_soumission.py
 
 **Localisation** : `C:\Users\BenoitDesjardins\Documents\Claude\Projet 2026\analyser_soumission.py`
 
 **CLI :**
 ```powershell
-python analyser_soumission.py --projet "S-26-010 - Nom"   # un projet
-python analyser_soumission.py --tous                       # tous les projets
-python analyser_soumission.py --lister                     # liste sans analyser
-python analyser_soumission.py --forcer                     # régénère même si registre OK
-python analyser_soumission.py --sans-ollama                # no-op (compat.)
+python analyser_soumission.py --projet "S-26-010 - Nom"
+python analyser_soumission.py --tous
+python analyser_soumission.py --lister
+python analyser_soumission.py --forcer
 ```
 
 **Constantes :**
 - MAX_CONTEXTE_CHARS : 800,000
 - MODELE_CLAUDE : claude-sonnet-4-6
 - MAX_TOKENS_01_08 : 60,000 | MAX_TOKENS_09 : 16,000
-- Split corpus : bin-packing intelligent, max 200,000 chars/chunk, jamais couper un document
-- Appels API : N chunks (01-08) + 1 appel séparé (09 rapport estimateur)
-- Streaming activé (évite timeout >10 min)
-- Registre MD5 (registre.json) — évite re-analyse si fichiers inchangés
-- Parsing JSON : 4 fallbacks, compatible Windows \r\n
-- Récupération partielle si JSON tronqué (≥3 clés)
-- Warnings ToUnicode PDF supprimés (logging.ERROR sur pdfminer)
+- Split corpus : bin-packing, max 200,000 chars/chunk
+- Streaming activé | Registre MD5 | Warnings PDF supprimés
 
-### Stratégie 1 — CONTRAT, RÉGIE : Extraction ciblée par regex
+### Stratégies de filtrage
 
-Fonction `extraire_champs_contrat(texte)` — fenêtre 300 chars autour de chaque match.
+| Type doc | Stratégie | Résultat S-26-010 |
+|---|---|---|
+| CONTRAT | Extraction ciblée regex | 238K → 7,780 (-97%) ✅ |
+| RÉGIE | Extraction ciblée regex | 87K → 1,950 (-98%) ✅ |
+| AVIS_AO | Extraction ciblée (SQI/municipal) | Nouveau ✅ |
+| DEVIS_ARCH | MasterFormat P1/P2/P3 + Signal/Bruit | 462K → 140K (-70%) ✅ |
+| DEVIS_ADMIN | Signal/Bruit (seuil >= 1) | 0% ⚠️ PENDING |
+| PLANS | detect_pages_devis() | Devis intégrés extraits ✅ |
 
-Champs extraits :
-- Cautionnement (soumission, exécution, main-d'œuvre)
-- Assurances (RC générale, chantier, tous risques, wrap-up) + montants
-- Dates (début, fin, durée en jours)
-- Pénalités (montant/jour, plafond)
-- Retenues (%, conditions de libération)
-- Travail de soir/nuit (restrictions, majorations)
-- Résiliation (motifs, contexte)
-- **ANNEXES** : détection pattern `ANNEXE \w+` + 2000 chars suivants ← PENDING
+**AVIS_AO — détection :**
+Patterns : "AVIS D'APPEL D'OFFRES", "AAO-", "SEAO", "SQI", "Numéro de contrat"
+Champs : durée, date début, garantie soumission, pénalité, visite
 
-Format sortie : `=== INFORMATIONS CONTRACTUELLES EXTRAITES ===`
-Champs absents : `ABSENT — vérifier manuellement`
-
-**Résultats S-26-010** : Contrat 238K → 7,780 chars (-97%) ✅ | Régie 87K → 1,950 chars (-98%) ✅
-
-### Stratégie 2 — DEVIS_ARCH : Filtrage en 3 couches
-
-**Couche 1 — Règle MasterFormat (sections 02 00 00+) :**
-- Séparation TOC/corps : tout avant le premier "Partie 1" = table des matières → Signal/Bruit seulement
-- Corps du texte : split par `(?=\bPartie\s*[123]\b)`
-- PARTIE 1 / GÉNÉRALITÉS → SUPPRIMER
-- PARTIE 2 / PRODUITS → GARDER intégralement
-- PARTIE 3 / EXÉCUTION → SUPPRIMER
-- Format section détecté par pré-analyse Claude API (échantillon 1/10 pages, confiance retournée)
-- Résultat mis en cache dans registre.json par MD5
-
-**Couche 2 — Signal/Bruit (sections 01 et TOC) :**
-- Seuil >= 2 pour garder. Helper partagé : `_scorer_paragraphe(para)`
-- SIGNAL +3 : chiffres+$/%/jour, mots contractuels (pénalité, retenue, BSDQ, amiante, PCI, milieu occupé), MAJUSCULES≥5, dates
-- SIGNAL +2 : obligatoire/interdit/requis, coordination spécifique, approbation requise
-- BRUIT -2 : "règles de l'art", codes/normes seuls, nettoyage générique, garantie standard
-- BRUIT -3 : titres seuls, listes fabricants, "se conformer à" seul
-- Liste noire (score -5) : "selon les règles de l'art", "tel qu'indiqué aux plans", "coordonner avec les" (sans nom)...
-
-**Couche 3 — Exception universelle (override) :**
-- Garder TOUJOURS si contient : pénalité, $/jour, point d'arrêt, BSDQ, amiante, PCI, infection nosocomiale, milieu occupé, date spécifique
-- Tag `[CRITIQUE]` ajouté
-
-Affichage : `ARCH [fichier] : P1 supprimées: Xkb | P2 gardées: Xkb | P3 supprimées: Xkb | Exceptions: N | Score/Bruit: N supprimés`
-
-**Résultats S-26-010** : 462K → 140K (-70%) ✅
-
-### Stratégie 3 — DEVIS_ADMIN : Signal/Bruit seul (seuil >= 1)
-⚠️ PENDING : 0% de réduction actuellement
-
-### PLANS — Détection devis intégrés
-Fonction `detect_pages_devis(pdf_path)` :
-- Score +5 : pattern section MasterFormat avec tiret (ex: `26 05 00 —`)
-- Score +3 : titres de devis reconnus (16 titres dans _TITRES_DEVIS_PLANS)
-- Score +2 : densité texte > 2000 chars/page
-- Score -3 : page graphique (grille plan + texte < 1000 chars)
-- Si score >= 5 → extraire et traiter comme DEVIS_ADMIN | Si score < 5 → ignorer
-
-**Résultats S-26-010 PLANS** :
-- 2506-155A D_plans ARCH : 16 pages → 6 pages devis (81,374 chars)
-- Pluritec MB : 9 pages → 6 pages (106,432 chars)
-- Pluritec S : 4 pages → 2 pages (12,751 chars)
-- Pluritec E : 17 pages → 9 pages (103,762 chars)
-
-### Résultats de filtrage — S-26-010
-
-| Document | Brut | Condensé | Réduction | Statut |
-|----------|------|----------|-----------|--------|
-| Contrat | 238,906 | 7,780 | -97% | ✅ |
-| Régie | 87,088 | 1,950 | -98% | ✅ |
-| Devis ARCH | 462,340 | 140,596 | -70% | ✅ |
-| Devis Admin | 51,668 | 51,667 | 0% | ⚠️ PENDING |
-| PLANS (4) | 305,277 | 304,819 | ~0% | ⚠️ PENDING |
-| Soumissions reçues | ~7,000 | ~1,000 | -86% à -89% | ✅ |
-| **Corpus final** | **1,198K** | **554K** | **-53.7%** | ✅ sous 800K |
-
-**Split chunks S-26-010** : 4 chunks [196kb, 134kb, 103kb, 119kb]
+**Corpus final S-26-010** : 1,198K brut → 554K (-53.7%), 4 chunks
 
 ### Livrables générés dans `Analyse\`
 ```
-00_table_matières_technique.md    ← PENDING
+00_table_matières_technique.md
 01_table_documentaire.md
 02_délais_échéancier.md
 03_pénalités_retenues.md
@@ -176,80 +189,65 @@ Fonction `detect_pages_devis(pdf_path)` :
 07_BSDQ_sous-traitance.md
 08_soumissions_reçues.md
 09_rapport_estimateur.md
-log_analyse.txt
-registre.json
-reponse_brute_01_08.txt
-reponse_brute_09.txt
+log_analyse.txt | registre.json
 ```
-
-**Qualité des livrables** : détaillée et utilisable — jalons, préavis, horaires, phasage bien capturés.
-**Problème identifié** : ANNEXES du contrat (ex: ANNEXE 0.01.13 - ÉCHÉANCIER à page 75) non capturées → PENDING
-
-### Coûts API
-- Tarif Sonnet : $3 USD/M tokens input | $15 USD/M tokens output
-- Long context >200K tokens : $6 USD/M input
-- Par analyse S-26-010 (4 chunks) : ~$1-2 USD estimé
-- 50 analyses/an : ~$50-100 USD — acceptable
-
----
-
-## 5. Architecture 3 phases
-
-| Phase | Nom | Script | Statut |
-|-------|-----|--------|--------|
-| 1 | Analyse dossier AO | analyser_soumission.py | ✅ Fonctionnel |
-| 1b | Alertes addendas | analyser_soumission.py --addenda | ⬜ PENDING |
-| 2 | Suivi soumissions reçues | suivre_soumissions.py | ⬜ PENDING |
-| 3 | Post-mortem projet | postmortem.py (SQLite) | ⬜ PENDING |
 
 ---
 
 ## 6. Statut
 
 ### ✅ Complété
-- Cockpit HTML créé et affiché dans Chrome via Cowork
-- Git configuré + repo GitHub public
-- Node.js + Claude Code installés
-- ANTHROPIC_API_KEY configurée
-- Script analyser_soumission.py fonctionnel — 9 livrables générés
-- Suppression doublons fichiers (set() sur chemins abspath)
-- Optimisation : 9 appels → N chunks + 1 appel API
-- Streaming activé (évite timeout >10 min)
-- Fix parsing JSON Windows (\r\n)
-- Suppression complète Ollama — Python pur
-- Stratégie extraction ciblée CONTRAT/RÉGIE (-97%/-98%)
-- Filtrage MasterFormat P1/P2/P3 DEVIS_ARCH (-70%)
-- Pré-analyse structure devis via Claude API (confiance retournée, cache MD5)
-- Split corpus bin-packing intelligent (max 200K/chunk, jamais couper un doc)
-- MAX_CONTEXTE_CHARS monté à 800,000
-- Scan récursif sous-dossiers Plan & Devis
-- Détection pages de devis intégrées aux plans (Pluritec E11-E13)
-- Registre MD5 pour éviter re-analyse
-- Warnings ToUnicode PDF supprimés
+- Cockpit HTML servi par FastAPI sur localhost:8000
+- Git + repo GitHub public
+- Script analyser_soumission.py — 9 livrables générés
+- Filtrage MasterFormat DEVIS_ARCH (-70%)
+- Extraction ciblée CONTRAT/RÉGIE (-97%/-98%)
+- Type AVIS_AO pour documents SQI/municipaux
+- Split corpus bin-packing (max 200K/chunk)
+- Streaming API activé
+- Détection pages devis intégrées aux plans
+- Module SEAO complet :
+  - Scraper données ouvertes Données Québec
+  - Base SQLite 8,139 AO, 228 soumissions CRC
+  - Dashboard avec KPIs, filtres, pastilles rang
+  - Filtre "Mes AOs"
+  - Modal détail avec saisie montants manuels
+  - Saisie marge + profit estimé
+  - Liste compétiteurs avec stats
+  - Sync automatique Windows Task Scheduler
+  - Route POST /seao/sync depuis cockpit
 
 ### ⬜ Pending
-- Capturer ANNEXES du contrat dans extraire_champs_contrat() (ex: ANNEXE 0.01.13 - ÉCHÉANCIER)
-- DEVIS_ADMIN : améliorer filtrage (0% réduction actuellement)
-- Implémenter 00_table_matières_technique.md
-- Implémenter mode --addenda
-- Créer suivre_soumissions.py
-- Brancher boutons cockpit via FastAPI local
-- Créer postmortem.py avec SQLite
+- DEVIS_ADMIN : améliorer filtrage (0% réduction)
+- ANNEXES contrat : capturer annexes (ex: échéancier p.75)
+- 00_table_matières_technique.md
+- Mode --addenda
+- suivre_soumissions.py
+- postmortem.py avec SQLite
+- Page compétiteur détaillée dans cockpit
+- Page paramètres SEAO complète
 
 ---
 
 ## 7. Notes techniques
 
-**Commande de test standard :**
+**Commandes de test :**
 ```powershell
+# Analyse
 python analyser_soumission.py --projet "S-26-010 - Réaménagement Radio-oncologie CHAUR" --forcer
+
+# SEAO
+python seao_scraper.py --sync --max 5
+python seao_scraper.py --stats
 ```
+
+**Mon NEQ CRC :** `1180040314`
+**Nom exact DB :** `CONSTRUCTION RICHARD CHAMPAGNE INC.`
 
 **Patterns regex clés :**
 - Section MasterFormat : `r'(?:^|\n)((?:0[2-9]|[1-9]\d)\s+\d{2}\s+\d{2})\s*[-–—]?\s*([A-Z][^\n]{3,60})'`
 - Split Parties : `r'(?=\bPartie\s*[123]\b)'`
-- Termes critiques : `pénalité | $/jour | point d'arrêt | BSDQ | amiante | PCI`
-- Annexes contrat : `r'(?i)ANNEXE\s+\w+[\d\.]*\s*[-–—]?\s*[^\n]{5,60}'` ← PENDING
+- AVIS_AO : `r'AVIS\s+D.APPEL\s+D.OFFRES|AAO-|Numéro de contrat'`
 
 **Usage en début de session Claude :**
-> Coller l'URL raw : https://raw.githubusercontent.com/bdesjardins1342/crc-cockpit/main/reference.md
+> Coller : https://raw.githubusercontent.com/bdesjardins1342/crc-cockpit/main/reference.md
