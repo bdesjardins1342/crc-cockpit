@@ -130,6 +130,19 @@ def ping():
 SEAO_DB = os.path.join(COCKPIT_DIR, "seao.db")
 
 
+@app.on_event("startup")
+def migrate_seao_db():
+    if not os.path.exists(SEAO_DB):
+        return
+    conn = sqlite3.connect(SEAO_DB)
+    try:
+        conn.execute("ALTER TABLE soumissions ADD COLUMN montant_manuel REAL")
+        conn.commit()
+    except Exception:
+        pass  # colonne déjà existante
+    conn.close()
+
+
 def _seao_conn():
     if not os.path.exists(SEAO_DB):
         return None
@@ -239,14 +252,14 @@ def seao_appels(
         SELECT ao.ocid, ao.no_avis, ao.titre, ao.organisme, ao.region,
                ao.date_publication, ao.montant_estime, ao.statut, ao.url_seao,
                mp.ma_marge_pct, mp.mon_montant, mp.notes,
-               crc.rang  AS mon_rang,   crc.montant  AS mon_montant,
+               crc.rang  AS mon_rang,   COALESCE(crc.montant, crc.montant_manuel) AS mon_montant,
                w.soumissionnaire AS gagnant_nom, w.montant AS gagnant_montant,
                s2.montant AS second_montant
         FROM appels_offres ao
         LEFT JOIN mes_projets mp ON mp.ocid = ao.ocid
         LEFT JOIN soumissions crc ON crc.ocid = ao.ocid AND (crc.neq = ? OR crc.soumissionnaire LIKE ?)
-        LEFT JOIN (SELECT ocid, soumissionnaire, montant FROM soumissions WHERE gagnant=1) w  ON w.ocid  = ao.ocid
-        LEFT JOIN (SELECT ocid, montant FROM soumissions WHERE rang=2) s2 ON s2.ocid = ao.ocid
+        LEFT JOIN (SELECT ocid, soumissionnaire, COALESCE(montant,montant_manuel) AS montant FROM soumissions WHERE gagnant=1) w  ON w.ocid  = ao.ocid
+        LEFT JOIN (SELECT ocid, COALESCE(montant,montant_manuel) AS montant FROM soumissions WHERE rang=2) s2 ON s2.ocid = ao.ocid
         {wc}
         ORDER BY ao.date_publication DESC
         LIMIT ? OFFSET ?
@@ -299,12 +312,19 @@ def seao_appel(no_avis: str):
     ).fetchone()
 
     soum_list = [dict(s) for s in soumissions]
-    calculs   = {}
-    w = next((s for s in soum_list if s["gagnant"]), None)
+
+    def meff(s):
+        return s["montant"] or s.get("montant_manuel")
+
+    calculs = {}
+    w  = next((s for s in soum_list if s["gagnant"]), None) \
+         or next((s for s in soum_list if s["rang"] == 1), None)
     s2 = next((s for s in soum_list if s["rang"] == 2), None)
-    if w and s2 and w["montant"] and s2["montant"] and w["montant"] > 0:
-        diff = s2["montant"] - w["montant"]
-        calculs["ecart_1er_2e_pct"]    = round(diff / w["montant"] * 100, 1)
+    wm  = meff(w)  if w  else None
+    s2m = meff(s2) if s2 else None
+    if wm and s2m and wm > 0:
+        diff = s2m - wm
+        calculs["ecart_1er_2e_pct"]     = round(diff / wm * 100, 1)
         calculs["ecart_1er_2e_montant"] = round(diff, 2)
 
     conn.close()
@@ -394,6 +414,21 @@ def seao_marge(body: dict):
     """, (ao["ocid"], body.get("ma_marge_pct"), body.get("mon_montant"),
           body.get("notes", ""), datetime.now().isoformat()[:19]))
     conn.commit(); conn.close()
+    return {"ok": True}
+
+
+@app.post("/seao/montant_manuel")
+def seao_set_montant_manuel(body: dict):
+    conn = _seao_conn()
+    if not conn:
+        return {"error": "seao.db introuvable"}
+    soum_id = body.get("soum_id")
+    if not soum_id:
+        return {"error": "soum_id requis"}
+    montant = body.get("montant_manuel")
+    conn.execute("UPDATE soumissions SET montant_manuel=? WHERE id=?", (montant, soum_id))
+    conn.commit()
+    conn.close()
     return {"ok": True}
 
 

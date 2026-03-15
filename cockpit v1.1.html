@@ -734,6 +734,10 @@ option { background: var(--bg2); }
             <tr><td colspan="5" style="color:var(--text3);text-align:center;padding:12px">Chargement...</td></tr>
           </tbody>
         </table>
+        <div id="ao-soum-note" style="display:none;font-size:10px;color:var(--text3);margin-top:5px;line-height:1.5">
+          Les montants ne sont pas divulgués pour certains organismes.
+          Vous pouvez les saisir manuellement après l'ouverture des soumissions.
+        </div>
       </div>
       <div>
         <div class="modal-section-title">Mes données</div>
@@ -750,6 +754,10 @@ option { background: var(--bg2); }
             <label class="field-label">Notes</label>
             <input type="text" id="ao-notes" placeholder="Remarques...">
           </div>
+        </div>
+        <div id="ao-comp-bloc" style="display:none;margin-top:10px">
+          <label class="field-label">Montants compétiteurs connus</label>
+          <div id="ao-comp-inputs" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px"></div>
         </div>
         <div style="display:flex;gap:12px;margin-top:10px;align-items:center">
           <button class="btn btn-primary" onclick="sauvegarderMarge()">Sauvegarder</button>
@@ -1191,29 +1199,92 @@ async function ouvrirAODetail(noAvis) {
       <div><span class="info-key">Montant estimé</span><span class="info-val">${ao.montant_estime ? '$'+fmtMontant(ao.montant_estime) : '—'}</span></div>
       <div><span class="info-key">Statut</span><span class="info-val">${ao.statut||'—'}${ao.url_seao ? ` &nbsp;<a href="${ao.url_seao}" target="_blank" style="color:var(--accent2);font-size:10px">SEAO ↗</a>` : ''}</span></div>`;
     const soums = d.soumissions || [];
-    const gMon = soums.find(s=>s.gagnant)?.montant;
+    const mEff  = s => s.montant ?? s.montant_manuel ?? null;
+    const gagnant = soums.find(s => s.gagnant) ?? soums.find(s => s.rang === 1);
+    const gMon  = mEff(gagnant ?? {});
+    const anyNull = soums.some(s => s.montant === null || s.montant === undefined);
+    document.getElementById('ao-soum-note').style.display = anyNull ? '' : 'none';
+
     document.getElementById('ao-soum-body').innerHTML = soums.length ? soums.map(s => {
-      const ecart = s.rang > 1 && gMon && s.montant
-        ? ((s.montant - gMon) / gMon * 100).toFixed(1) : null;
+      const sm   = mEff(s);
+      const ecart = s.rang > 1 && gMon && sm ? ((sm - gMon) / gMon * 100).toFixed(1) : null;
+      let mCell;
+      if (sm !== null) {
+        const tag = s.montant_manuel && !s.montant
+          ? ' <span style="font-size:9px;color:var(--text3)" title="Saisi manuellement">✎</span>' : '';
+        mCell = `$${fmtMontant(sm)}${tag}`;
+      } else {
+        mCell = `<span style="color:var(--text3)">— </span>`
+              + `<button class="link-btn" style="font-size:11px" title="Saisir montant"
+                   onclick="editMontantCell(${s.id},this)">✏️</button>`;
+      }
       return `<tr>
         <td style="color:${s.rang===1?'var(--green)':'var(--text3)'}">#${s.rang}</td>
         <td style="color:${s.gagnant?'var(--green)':'var(--text2)'}">${s.gagnant?'🏆 ':''}${esc(s.soumissionnaire)}</td>
-        <td style="text-align:right">${s.montant ? '$'+fmtMontant(s.montant) : '—'}</td>
+        <td style="text-align:right">${mCell}</td>
         <td style="text-align:right;color:var(--yellow)">${ecart!==null ? '+'+ecart+'%' : s.rang===1 ? '<span style="color:var(--green)">—</span>' : '—'}</td>
         <td><button class="link-btn" onclick="ouvrirCompetiteur('${esc(s.neq||s.soumissionnaire)}')">→</button></td>
       </tr>`;
     }).join('') : '<tr><td colspan="5" style="color:var(--text3);text-align:center;padding:10px">Aucune soumission</td></tr>';
+
+    // Bloc montants compétiteurs dans "Mes données"
+    const nullSoums = soums.filter(s => !s.gagnant && (s.montant === null || s.montant === undefined));
+    const compBloc = document.getElementById('ao-comp-bloc');
+    if (nullSoums.length) {
+      compBloc.style.display = '';
+      document.getElementById('ao-comp-inputs').innerHTML = nullSoums.map(s => `
+        <div style="display:flex;align-items:center;gap:4px">
+          <span style="font-size:11px;color:var(--text3);white-space:nowrap">Rang ${s.rang}</span>
+          <input type="number" class="ao-comp-input" data-soum-id="${s.id}"
+            style="width:110px" placeholder="montant"
+            value="${s.montant_manuel || ''}"
+            onblur="saveMontantManuel(${s.id},this)"
+            onkeydown="if(event.key==='Enter')this.blur()">
+        </div>`).join('');
+    } else {
+      compBloc.style.display = 'none';
+    }
+
     const mes = d.mes_donnees;
     document.getElementById('ao-marge').value         = mes?.ma_marge_pct || '';
     document.getElementById('ao-montant-saisi').value = mes?.mon_montant  || '';
     document.getElementById('ao-notes').value         = mes?.notes        || '';
     majProfitCalc();
-    if (d.calculs?.ecart_1er_2e_pct !== undefined) {
-      const c = d.calculs;
-      document.getElementById('ao-profit-calc').textContent =
-        `Écart 1er→2e : +${c.ecart_1er_2e_pct}% ($${fmtMontant(c.ecart_1er_2e_montant)})`;
+
+    // Recalculer écart 1er→2e avec montant_manuel en fallback
+    const s2   = soums.find(s => s.rang === 2);
+    const wm   = mEff(gagnant ?? {});  // gagnant est déjà rang-1-fallback
+    const s2m  = s2 ? mEff(s2) : null;
+    const profCalc = document.getElementById('ao-profit-calc');
+    if (!document.getElementById('ao-marge').value || !document.getElementById('ao-montant-saisi').value) {
+      if (wm && s2m && wm > 0) {
+        const diff = s2m - wm;
+        profCalc.textContent = `Écart 1er→2e : +${(diff/wm*100).toFixed(1)}% ($${fmtMontant(diff)})`;
+      }
     }
   } catch(e) { toast('Erreur chargement AO', 'error'); console.error(e); }
+}
+
+function editMontantCell(soumId, btnEl) {
+  const td = btnEl.closest('td');
+  td.innerHTML = `<input type="number" style="width:90px;font-size:11px;background:var(--bg2);border:1px solid var(--accent);color:var(--text);padding:2px 6px;border-radius:4px"
+    placeholder="0.00"
+    onblur="saveMontantManuel(${soumId},this)"
+    onkeydown="if(event.key==='Enter')this.blur();if(event.key==='Escape'){ouvrirAODetail(currentAoNoAvis);}">`;
+  td.querySelector('input').focus();
+}
+
+async function saveMontantManuel(soumId, inputEl) {
+  const val = parseFloatOrNull(inputEl.value);
+  try {
+    await fetch(`${API}/seao/montant_manuel`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ soum_id: soumId, montant_manuel: val })
+    });
+    // Recharger le détail pour recalculer les écarts
+    await ouvrirAODetail(currentAoNoAvis);
+    if (val) toast(`Montant sauvegardé : $${fmtMontant(val)}`, 'success');
+  } catch(e) { toast('Erreur sauvegarde montant', 'error'); }
 }
 
 function majProfitCalc() {
