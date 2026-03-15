@@ -657,10 +657,7 @@ option { background: var(--bg2); }
       <div class="panel" style="overflow:visible">
         <div class="filter-bar">
           <span style="font-size:10px;color:var(--text3);letter-spacing:1px;white-space:nowrap">PÉRIODE :</span>
-          <button class="year-btn" data-annee="2023" onclick="filtreAnnee('2023',this)">2023</button>
-          <button class="year-btn" data-annee="2024" onclick="filtreAnnee('2024',this)">2024</button>
-          <button class="year-btn active" data-annee="2025" onclick="filtreAnnee('2025',this)">2025</button>
-          <button class="year-btn" data-annee="2026" onclick="filtreAnnee('2026',this)">2026</button>
+          <div id="annees-container" style="display:flex;gap:4px;flex-wrap:nowrap;overflow-x:auto;max-width:320px;scrollbar-width:thin"></div>
           <span style="color:var(--border2)">|</span>
           <input type="date" id="f-debut" style="width:130px">
           <span style="color:var(--text3);font-size:11px">→</span>
@@ -1402,12 +1399,26 @@ function markdownToHtml(md) {
 
 // ── SEAO / MARCHÉ ────────────────────────────────────────
 let currentAoNoAvis = null;
-let filtresSeao = { annee: '2025', date_debut: '', date_fin: '' };
+const ANNEE_COURANTE = String(new Date().getFullYear());
+let filtresSeao = { annee: ANNEE_COURANTE, date_debut: '', date_fin: '' };
 let _allAppels    = [];
 let mesAOSeulement = false;
 
 async function loadMarche() {
-  await Promise.all([loadSeaoDashboard(), loadSeaoAppels(), loadCompetiteurs()]);
+  await Promise.all([chargerAnnees(), loadSeaoDashboard(), loadSeaoAppels(), loadCompetiteurs()]);
+}
+
+async function chargerAnnees() {
+  try {
+    const r = await fetch(`${API}/seao/annees_disponibles`);
+    const d = await r.json();
+    const annees = d.annees || [];
+    const container = document.getElementById('annees-container');
+    container.innerHTML = annees.map(a => {
+      const actif = filtresSeao.annee.split(',').includes(a);
+      return `<button class="year-btn${actif ? ' active' : ''}" data-annee="${a}" onclick="filtreAnnee('${a}',this)">${a}</button>`;
+    }).join('');
+  } catch(e) { console.error(e); }
 }
 
 async function loadSeaoDashboard() {
@@ -1741,8 +1752,7 @@ function activerMesAO() {
 
 function filtreAnnee(annee, el) {
   el.classList.toggle('active');
-  // Collecter toutes les années actives
-  const actives = [...document.querySelectorAll('.year-btn[data-annee]')]
+  const actives = [...document.querySelectorAll('#annees-container .year-btn')]
     .filter(b => b.classList.contains('active'))
     .map(b => b.dataset.annee);
   filtresSeao = { annee: actives.join(','), date_debut: '', date_fin: '' };
@@ -1757,7 +1767,7 @@ function appliquerFiltres() {
     date_debut: document.getElementById('f-debut').value,
     date_fin:   document.getElementById('f-fin').value,
   };
-  document.querySelectorAll('.year-btn[data-annee]').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('#annees-container .year-btn').forEach(b => b.classList.remove('active'));
   loadSeaoAppels();
 }
 

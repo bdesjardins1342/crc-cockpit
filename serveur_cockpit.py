@@ -227,6 +227,21 @@ def seao_dashboard():
     }
 
 
+@app.get("/seao/annees_disponibles")
+def seao_annees_disponibles():
+    conn = _seao_conn()
+    if not conn:
+        return {"annees": []}
+    rows = conn.execute("""
+        SELECT DISTINCT strftime('%Y', date_publication) AS annee
+        FROM appels_offres
+        WHERE date_publication IS NOT NULL AND date_publication != ''
+        ORDER BY annee DESC
+    """).fetchall()
+    conn.close()
+    return {"annees": [r["annee"] for r in rows if r["annee"]]}
+
+
 @app.get("/seao/appels")
 def seao_appels(
     annee: str = "", date_debut: str = "", date_fin: str = "",
