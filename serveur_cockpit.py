@@ -348,18 +348,28 @@ def seao_appel(no_avis: str):
 
 
 @app.get("/seao/competiteurs")
-def seao_competiteurs():
+def seao_competiteurs(q: str = ""):
     conn = _seao_conn()
     if not conn:
         return {"error": "seao.db introuvable"}
-    rows = conn.execute("""
-        SELECT soumissionnaire, neq,
-               COUNT(*) AS nb_soumissions, SUM(gagnant) AS nb_victoires,
-               ROUND(AVG(CASE WHEN montant IS NOT NULL THEN montant END), 0) AS montant_moyen,
-               MIN(montant) AS montant_min, MAX(montant) AS montant_max
-        FROM soumissions WHERE soumissionnaire != ''
-        GROUP BY soumissionnaire ORDER BY nb_soumissions DESC LIMIT 30
-    """).fetchall()
+    if q:
+        rows = conn.execute("""
+            SELECT soumissionnaire, neq,
+                   COUNT(*) AS nb_soumissions, SUM(gagnant) AS nb_victoires,
+                   ROUND(AVG(CASE WHEN montant IS NOT NULL THEN montant END), 0) AS montant_moyen,
+                   MIN(montant) AS montant_min, MAX(montant) AS montant_max
+            FROM soumissions WHERE soumissionnaire != '' AND soumissionnaire LIKE ?
+            GROUP BY soumissionnaire ORDER BY nb_soumissions DESC LIMIT 50
+        """, (f"%{q}%",)).fetchall()
+    else:
+        rows = conn.execute("""
+            SELECT soumissionnaire, neq,
+                   COUNT(*) AS nb_soumissions, SUM(gagnant) AS nb_victoires,
+                   ROUND(AVG(CASE WHEN montant IS NOT NULL THEN montant END), 0) AS montant_moyen,
+                   MIN(montant) AS montant_min, MAX(montant) AS montant_max
+            FROM soumissions WHERE soumissionnaire != ''
+            GROUP BY soumissionnaire ORDER BY nb_soumissions DESC LIMIT 30
+        """).fetchall()
     conn.close()
     return {"competiteurs": [dict(r) for r in rows]}
 

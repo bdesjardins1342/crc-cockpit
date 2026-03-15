@@ -702,7 +702,12 @@ option { background: var(--bg2); }
             <span class="panel-title">Compétiteurs</span>
             <button class="btn btn-ghost" style="font-size:10px;padding:2px 8px" onclick="loadCompetiteurs()">↻</button>
           </div>
-          <div id="comp-sidebar" style="padding:6px; max-height:540px; overflow-y:auto">
+          <div style="padding:6px 6px 2px">
+            <input id="comp-search" type="text" placeholder="Rechercher un entrepreneur…"
+              style="width:100%;background:var(--bg3);border:1px solid var(--border2);color:var(--text);padding:5px 8px;font-size:11px;font-family:var(--mono);border-radius:3px;outline:none"
+              oninput="loadCompetiteurs(this.value)">
+          </div>
+          <div id="comp-sidebar" style="padding:6px; max-height:510px; overflow-y:auto">
             <div id="comp-list-body" style="display:flex;flex-direction:column;gap:1px">
               <div style="color:var(--text3);font-size:11px;padding:8px">Chargement...</div>
             </div>
@@ -781,7 +786,13 @@ option { background: var(--bg2); }
       <div>
         <div class="modal-section-title">Historique des appels</div>
         <table class="projets-table">
-          <thead><tr><th>Date</th><th>Titre</th><th style="text-align:center">Rang</th><th style="text-align:right">Montant</th><th></th></tr></thead>
+          <thead><tr>
+            <th style="cursor:pointer;user-select:none" onclick="sortCompAo('date')"><span id="sort-date">Date ↓</span></th>
+            <th>Titre</th>
+            <th style="text-align:center;cursor:pointer;user-select:none" onclick="sortCompAo('rang')"><span id="sort-rang">Rang</span></th>
+            <th style="text-align:right;cursor:pointer;user-select:none" onclick="sortCompAo('montant')"><span id="sort-montant">Montant</span></th>
+            <th></th>
+          </tr></thead>
           <tbody id="comp-ao-body"></tbody>
         </table>
       </div>
@@ -1391,16 +1402,59 @@ async function sauvegarderMarge() {
   } catch(e) { toast('Erreur sauvegarde', 'error'); }
 }
 
-async function loadCompetiteurs() {
+async function loadCompetiteurs(q = '') {
   try {
-    const r = await fetch(`${API}/seao/competiteurs`);
+    const url = q ? `${API}/seao/competiteurs?q=${encodeURIComponent(q)}` : `${API}/seao/competiteurs`;
+    const r = await fetch(url);
     const d = await r.json();
     document.getElementById('comp-list-body').innerHTML = (d.competiteurs||[]).map(c => `
       <div class="comp-item" onclick="ouvrirCompetiteur('${esc(c.neq||c.soumissionnaire)}')">
         <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:148px" title="${esc(c.soumissionnaire)}">${esc(c.soumissionnaire)}</span>
         <span class="comp-badge"><span>${c.nb_soumissions}</span><span style="color:var(--green)">${c.nb_victoires}v</span></span>
-      </div>`).join('') || '<div style="color:var(--text3);font-size:11px;padding:8px">Aucune donnée</div>';
+      </div>`).join('') || '<div style="color:var(--text3);font-size:11px;padding:8px">Aucun résultat</div>';
   } catch(e) { console.error(e); }
+}
+
+let _compAoData = [];
+let _compSort   = { col: 'date', dir: 'desc' };
+
+function sortCompAo(col) {
+  if (_compSort.col === col) {
+    _compSort.dir = _compSort.dir === 'asc' ? 'desc' : 'asc';
+  } else {
+    _compSort = { col, dir: col === 'date' ? 'desc' : 'asc' };
+  }
+  renderCompAoTable();
+}
+
+function renderCompAoTable() {
+  const { col, dir } = _compSort;
+  const sorted = [..._compAoData].sort((a, b) => {
+    let va, vb;
+    if (col === 'date')    { va = a.date_publication||''; vb = b.date_publication||''; }
+    else if (col === 'rang')    { va = a.rang||99;    vb = b.rang||99; }
+    else if (col === 'montant') { va = a.montant||0;  vb = b.montant||0; }
+    if (va < vb) return dir === 'asc' ? -1 : 1;
+    if (va > vb) return dir === 'asc' ?  1 : -1;
+    return 0;
+  });
+  // Update header arrows
+  ['date','rang','montant'].forEach(c => {
+    const el = document.getElementById(`sort-${c}`);
+    if (!el) return;
+    const base = c.charAt(0).toUpperCase() + c.slice(1);
+    el.textContent = _compSort.col === c
+      ? base + (_compSort.dir === 'asc' ? ' ↑' : ' ↓')
+      : base;
+  });
+  document.getElementById('comp-ao-body').innerHTML = sorted.map(a => `
+    <tr>
+      <td style="color:var(--text3);font-size:11px;white-space:nowrap">${a.date_publication||'—'}</td>
+      <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(a.titre)}">${esc(a.titre)}</td>
+      <td style="text-align:center;color:${a.rang===1?'var(--green)':'var(--text2)'}">#${a.rang}</td>
+      <td style="text-align:right">${a.montant?'$'+fmtMontant(a.montant):'—'}</td>
+      <td><button class="link-btn" onclick="fermerModal('comp-modal');ouvrirAODetail('${esc(a.no_avis)}')">→</button></td>
+    </tr>`).join('');
 }
 
 async function ouvrirCompetiteur(identifiant) {
@@ -1408,6 +1462,8 @@ async function ouvrirCompetiteur(identifiant) {
   document.getElementById('comp-modal-titre').textContent = identifiant;
   document.getElementById('comp-kpis').innerHTML  = '<div style="color:var(--text3);font-size:11px">Chargement...</div>';
   document.getElementById('comp-ao-body').innerHTML = '';
+  _compAoData = [];
+  _compSort   = { col: 'date', dir: 'desc' };
   try {
     const r = await fetch(`${API}/seao/competiteur/${encodeURIComponent(identifiant)}`);
     const d = await r.json();
@@ -1420,14 +1476,8 @@ async function ouvrirCompetiteur(identifiant) {
       <div class="kpi-card"><div class="kpi-label">Victoires</div><div class="kpi-value" style="font-size:22px;color:var(--green)">${s.nb_victoires}</div></div>
       <div class="kpi-card"><div class="kpi-label">Taux succès</div><div class="kpi-value" style="font-size:22px">${taux}%</div></div>
       <div class="kpi-card"><div class="kpi-label">Montant moyen</div><div class="kpi-value" style="font-size:16px">${s.montant_moyen?'$'+fmtMontant(s.montant_moyen):'—'}</div></div>`;
-    document.getElementById('comp-ao-body').innerHTML = (d.appels||[]).map(a => `
-      <tr>
-        <td style="color:var(--text3);font-size:11px;white-space:nowrap">${a.date_publication||'—'}</td>
-        <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(a.titre)}">${esc(a.titre)}</td>
-        <td style="text-align:center;color:${a.rang===1?'var(--green)':'var(--text2)'}">#${a.rang}</td>
-        <td style="text-align:right">${a.montant?'$'+fmtMontant(a.montant):'—'}</td>
-        <td><button class="link-btn" onclick="fermerModal('comp-modal');ouvrirAODetail('${esc(a.no_avis)}')">→</button></td>
-      </tr>`).join('');
+    _compAoData = d.appels || [];
+    renderCompAoTable();
   } catch(e) { toast('Erreur compétiteur', 'error'); console.error(e); }
 }
 
