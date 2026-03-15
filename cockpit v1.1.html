@@ -657,7 +657,8 @@ option { background: var(--bg2); }
       <div class="panel" style="overflow:visible">
         <div class="filter-bar">
           <span style="font-size:10px;color:var(--text3);letter-spacing:1px;white-space:nowrap">PÉRIODE :</span>
-          <div id="annees-container" style="display:flex;gap:4px;flex-wrap:nowrap;overflow-x:auto;max-width:320px;scrollbar-width:thin"></div>
+          <button class="year-btn" id="btn-tout" onclick="filtreAnnee('',this)" style="white-space:nowrap">Tout</button>
+          <div id="annees-container" style="display:flex;gap:4px;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:thin"></div>
           <span style="color:var(--border2)">|</span>
           <input type="date" id="f-debut" style="width:130px">
           <span style="color:var(--text3);font-size:11px">→</span>
@@ -741,7 +742,14 @@ option { background: var(--bg2); }
             <span class="panel-title">Compétiteurs</span>
             <button class="btn btn-ghost" style="font-size:10px;padding:2px 8px" onclick="loadCompetiteurs()">↻</button>
           </div>
-          <div style="padding:6px 6px 2px">
+          <div style="padding:6px 6px 0">
+            <div class="comp-item" onclick="ouvrirCompetiteur('1148164123')"
+              style="border:1px solid color-mix(in srgb,var(--accent) 35%,transparent);background:color-mix(in srgb,var(--accent) 8%,transparent);border-radius:3px;margin-bottom:4px">
+              <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--accent);font-weight:600;font-size:11px" title="CONSTRUCTION RICHARD CHAMPAGNE INC.">⭐ CRC</span>
+              <span style="font-size:10px;color:var(--accent);opacity:0.7">mes stats</span>
+            </div>
+          </div>
+          <div style="padding:0 6px 2px">
             <input id="comp-search" type="text" placeholder="Rechercher un entrepreneur…"
               style="width:100%;background:var(--bg3);border:1px solid var(--border2);color:var(--text);padding:5px 8px;font-size:11px;font-family:var(--mono);border-radius:3px;outline:none"
               oninput="loadCompetiteurs(this.value)">
@@ -1413,11 +1421,12 @@ async function chargerAnnees() {
     const r = await fetch(`${API}/seao/annees_disponibles`);
     const d = await r.json();
     const annees = d.annees || [];
-    const container = document.getElementById('annees-container');
-    container.innerHTML = annees.map(a => {
-      const actif = filtresSeao.annee.split(',').includes(a);
-      return `<button class="year-btn${actif ? ' active' : ''}" data-annee="${a}" onclick="filtreAnnee('${a}',this)">${a}</button>`;
-    }).join('');
+    const actives = filtresSeao.annee ? filtresSeao.annee.split(',') : [];
+    document.getElementById('annees-container').innerHTML = annees.map(a =>
+      `<button class="year-btn${actives.includes(a) ? ' active' : ''}" data-annee="${a}" onclick="filtreAnnee('${a}',this)">${a}</button>`
+    ).join('');
+    // Bouton Tout : actif seulement si aucune année sélectionnée
+    document.getElementById('btn-tout').classList.toggle('active', actives.length === 0);
   } catch(e) { console.error(e); }
 }
 
@@ -1751,11 +1760,19 @@ function activerMesAO() {
 }
 
 function filtreAnnee(annee, el) {
-  el.classList.toggle('active');
-  const actives = [...document.querySelectorAll('#annees-container .year-btn')]
-    .filter(b => b.classList.contains('active'))
-    .map(b => b.dataset.annee);
-  filtresSeao = { annee: actives.join(','), date_debut: '', date_fin: '' };
+  if (annee === '') {
+    // Bouton "Tout" : désélectionner toutes les années
+    document.querySelectorAll('#annees-container .year-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('btn-tout').classList.add('active');
+    filtresSeao = { annee: '', date_debut: '', date_fin: '' };
+  } else {
+    el.classList.toggle('active');
+    const actives = [...document.querySelectorAll('#annees-container .year-btn')]
+      .filter(b => b.classList.contains('active'))
+      .map(b => b.dataset.annee);
+    document.getElementById('btn-tout').classList.toggle('active', actives.length === 0);
+    filtresSeao = { annee: actives.join(','), date_debut: '', date_fin: '' };
+  }
   document.getElementById('f-debut').value = '';
   document.getElementById('f-fin').value   = '';
   loadSeaoAppels();
@@ -1768,6 +1785,7 @@ function appliquerFiltres() {
     date_fin:   document.getElementById('f-fin').value,
   };
   document.querySelectorAll('#annees-container .year-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('btn-tout').classList.remove('active');
   loadSeaoAppels();
 }
 
