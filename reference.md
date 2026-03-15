@@ -1,5 +1,5 @@
 # CRC COCKPIT — Document de référence
-Version 1.3 — Mars 2026 | Benoit Desjardins | CRC | Montréal
+Version 1.4 — Mars 2026 | Benoit Desjardins | CRC | Montréal
 
 ---
 
@@ -44,10 +44,12 @@ python -m uvicorn serveur_cockpit:app --reload --port 8000
 | Fichier | Rôle |
 |---------|------|
 | `cockpit v1.1.html` | Dashboard principal servi par FastAPI |
-| `serveur_cockpit.py` | Serveur FastAPI — routes analyse + SEAO |
+| `serveur_cockpit.py` | Serveur FastAPI — routes analyse + SEAO + Budget |
 | `analyser_soumission.py` | Script d'analyse de dossiers AO |
 | `seao_scraper.py` | Scraper données ouvertes SEAO |
+| `budget_manager.py` | Helper SQLite pour budget.db |
 | `seao.db` | Base SQLite — AOs, soumissions, mes données |
+| `budget.db` | Base SQLite — projets budget, postes, dépenses |
 | `data/` | Cache local des fichiers JSON SEAO hebdo/mensuel |
 | `sync_seao.bat` | Script batch pour sync hebdo |
 | `setup_tache_planifiee.bat` | Crée la tâche Windows Task Scheduler (1x admin) |
@@ -63,6 +65,7 @@ python -m uvicorn serveur_cockpit:app --reload --port 8000
 - **Projets** — liste complète avec statuts
 - **Livrables** — consulter les .md générés
 - **Marché** — intelligence SEAO
+- **Budget** — suivi budgétaire par projet
 
 **Page Marché :**
 - Filtre par année (2023/24/25/26) ou date custom
@@ -73,6 +76,16 @@ python -m uvicorn serveur_cockpit:app --reload --port 8000
 - Modal détail AO : tous soumissionnaires + montants + saisie marge
 - Page paramètres ⚙ : mon NEQ, seuils, bouton sync manuel
 - Bouton "+ AO privé" : saisie manuelle hors SEAO
+
+**Page Budget :**
+- Sélecteur projet (lié à S-26-XXX ou autre identifiant)
+- KPIs : Budget total, Engagé, Payé, Écart
+- Postes budgétaires collapsibles (code MasterFormat + nom + budget prévu)
+- Dépenses par poste avec types : P=Payé · E=Engagé · C=Contrat · X=Extra
+- Bouton déplacer dépense vers autre poste
+- Filtre par type P/E/C/X
+- Import PDF (détection automatique des montants via pdfminer)
+- Export CSV (UTF-8 BOM, compatible Excel)
 
 ---
 
@@ -159,12 +172,39 @@ GET  /seao/dashboard          → KPIs + derniers AO
 GET  /seao/appels             → liste paginée (filtres: annee, date, mes_ao)
 GET  /seao/appel/{no_avis}    → détail + soumissions + mes données
 GET  /seao/competiteur/{neq}  → stats compétiteur (filtré région 04/17)
-GET  /seao/competiteurs       → top compétiteurs région 04/17
+GET  /seao/competiteurs       → top compétiteurs région 04/17 (param ?q=)
 GET  /seao/parametres         → lire paramètres
 POST /seao/parametres         → sauvegarder paramètres
 POST /seao/marge              → saisir marge + montant sur un AO
 POST /seao/ao_prive           → créer AO hors SEAO manuellement
 POST /seao/sync               → lancer sync en arrière-plan
+```
+
+### Routes serveur Budget
+```
+GET  /budget/projets              → liste projets avec KPIs agrégés
+GET  /budget/projet/{id}          → postes + dépenses du projet
+POST /budget/projet               → créer/modifier projet
+POST /budget/poste                → créer/modifier poste
+POST /budget/depense              → ajouter/modifier dépense
+DELETE /budget/depense/{id}       → supprimer dépense
+POST /budget/depense/{id}/deplacer → déplacer vers autre poste
+POST /budget/import_pdf           → analyser PDF et extraire montants
+GET  /budget/export/{id}          → export CSV
+```
+
+**budget.db :**
+```
+TABLE projets_budget
+  projet_id (TEXT PK), budget_total, date_creation
+
+TABLE postes
+  id, projet_id, code (MasterFormat), nom, budget_prevu
+  UNIQUE(projet_id, code)
+
+TABLE depenses
+  id, poste_id, projet_id, type (P/E/C/X),
+  reference, fournisseur, detail, montant, date_depense
 ```
 
 ---
@@ -243,6 +283,17 @@ log_analyse.txt | registre.json
   - Saisie marge + profit estimé
   - AOs privés (hors SEAO)
   - Sync automatique Windows Task Scheduler
+  - Multi-sélection années (boutons toggle, filtre IN)
+  - Recherche compétiteurs par nom (barre de recherche)
+  - Tri colonnes dans modal compétiteur (date/rang/montant)
+- Module Budget complet :
+  - budget_manager.py + budget.db (3 tables)
+  - CRUD projets / postes / dépenses
+  - Types P/E/C/X avec couleurs
+  - Postes collapsibles + KPIs (engagé/payé/écart)
+  - Déplacement dépense entre postes
+  - Import PDF (pdfminer, détection montants)
+  - Export CSV compatible Excel
 
 ### ⬜ Pending
 - DEVIS_ADMIN : améliorer filtrage (0% réduction)
@@ -253,6 +304,7 @@ log_analyse.txt | registre.json
 - postmortem.py avec SQLite
 - Page compétiteur détaillée dans cockpit
 - Page paramètres SEAO complète
+- Accès distant via Tailscale
 
 ---
 
