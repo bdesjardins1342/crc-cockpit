@@ -624,6 +624,10 @@ option { background: var(--bg2); }
           <span style="color:var(--text3);font-size:11px">→</span>
           <input type="date" id="f-fin" style="width:130px">
           <button class="btn btn-ghost" style="font-size:11px;padding:4px 12px" onclick="appliquerFiltres()">Appliquer</button>
+          <button class="year-btn" id="btn-mes-ao" onclick="toggleMesAO(this)"
+            style="color:var(--green);border-color:color-mix(in srgb,var(--green) 40%,transparent);white-space:nowrap">
+            🟢 Mes AOs
+          </button>
           <button class="btn btn-ghost" style="font-size:11px;padding:4px 10px;margin-left:auto" title="Paramètres SEAO" onclick="ouvrirParams()">⚙</button>
         </div>
       </div>
@@ -1065,6 +1069,8 @@ function markdownToHtml(md) {
 // ── SEAO / MARCHÉ ────────────────────────────────────────
 let currentAoNoAvis = null;
 let filtresSeao = { annee: '2025', date_debut: '', date_fin: '' };
+let _allAppels    = [];
+let mesAOSeulement = false;
 
 async function loadMarche() {
   await Promise.all([loadSeaoDashboard(), loadSeaoAppels(), loadCompetiteurs()]);
@@ -1080,7 +1086,12 @@ async function loadSeaoDashboard() {
     document.getElementById('kpi-actifs-sub').textContent = `${k.ao_actifs || 0} actifs`;
     document.getElementById('kpi-soumis').textContent  = k.mes_ao || 0;
     document.getElementById('kpi-gagnes-sub').textContent = `${k.ao_gagnes || 0} gagnés — ${k.taux_succes || 0}%`;
-    document.getElementById('kpi-profit').textContent  = k.profit_total > 0 ? '$' + fmtMontant(k.profit_total) : '—';
+    if (k.profit_total > 0) {
+      document.getElementById('kpi-profit').textContent = '$' + fmtMontant(k.profit_total);
+    } else {
+      document.getElementById('kpi-profit').innerHTML =
+        '<span class="link-btn" style="font-size:13px" onclick="activerMesAO()">Saisir marge →</span>';
+    }
     document.getElementById('kpi-position').textContent = k.position_moyenne ? '#' + k.position_moyenne : '—';
     const alertes = d.alertes_marge || [];
     const bar = document.getElementById('seao-alerte');
@@ -1109,29 +1120,32 @@ async function loadSeaoAppels() {
       tbody.innerHTML = `<tr><td colspan="8" style="color:var(--red);padding:16px">${d.error}</td></tr>`;
       return;
     }
-    document.getElementById('seao-total-txt').textContent = `${d.total} AO`;
-    renderSeaoTable(d.appels || []);
+    _allAppels = d.appels || [];
+    majCompteurAO();
+    renderSeaoTable(_allAppels);
   } catch(e) {
     tbody.innerHTML = '<tr><td colspan="8" style="color:var(--red);text-align:center;padding:16px">Erreur chargement</td></tr>';
   }
 }
 
-const FLAG_CFG = {
-  gagne:           { cls: 'flag-gagne',     tip: '🟢 Gagné' },
-  aurait_pu_monter:{ cls: 'flag-aurait-pu', tip: '🟡 Gagné — aurait pu monter' },
-  marge_trop_basse:{ cls: 'flag-trop-bas',  tip: '🔴 Perdu — écart faible' },
-  perdu:           { cls: 'flag-perdu',     tip: '🔴 Perdu' },
-  pas_soumis:      { cls: 'flag-rien',      tip: '⚫ Pas soumis' },
-};
+function dotFromRang(rang) {
+  if (rang == null) return { cls: 'flag-rien',      tip: '⚫ Pas soumis' };
+  if (rang === 1)   return { cls: 'flag-gagne',     tip: '🟢 Rang #1' };
+  if (rang <= 3)    return { cls: 'flag-aurait-pu', tip: '🟡 Rang #' + rang };
+  return             { cls: 'flag-perdu',            tip: '🔴 Rang #' + rang };
+}
 
 function renderSeaoTable(appels) {
   const tbody = document.getElementById('seao-table-body');
-  if (!appels.length) {
-    tbody.innerHTML = '<tr><td colspan="8" style="color:var(--text3);text-align:center;padding:20px">Aucun AO pour cette période</td></tr>';
+  const liste = mesAOSeulement ? appels.filter(a => a.mon_rang != null) : appels;
+  if (!liste.length) {
+    tbody.innerHTML = '<tr><td colspan="8" style="color:var(--text3);text-align:center;padding:20px">'
+      + (mesAOSeulement ? 'Aucun AO CRC pour cette période' : 'Aucun AO pour cette période')
+      + '</td></tr>';
     return;
   }
-  tbody.innerHTML = appels.map(a => {
-    const f   = FLAG_CFG[a.flag] || FLAG_CFG.pas_soumis;
+  tbody.innerHTML = liste.map(a => {
+    const f   = dotFromRang(a.mon_rang);
     const mon = a.mon_montant ? '$' + fmtMontant(a.mon_montant) : '—';
     const gNom = a.gagnant_nom ? shortNom(a.gagnant_nom) : '—';
     const gMon = a.gagnant_montant ? ' <span style="color:var(--text3);font-size:10px">$' + fmtMontant(a.gagnant_montant) + '</span>' : '';
@@ -1264,6 +1278,25 @@ async function ouvrirCompetiteur(identifiant) {
         <td><button class="link-btn" onclick="fermerModal('comp-modal');ouvrirAODetail('${esc(a.no_avis)}')">→</button></td>
       </tr>`).join('');
   } catch(e) { toast('Erreur compétiteur', 'error'); console.error(e); }
+}
+
+function majCompteurAO() {
+  const visible = mesAOSeulement ? _allAppels.filter(a => a.mon_rang != null) : _allAppels;
+  document.getElementById('seao-total-txt').textContent =
+    mesAOSeulement ? `${visible.length} AO CRC / ${_allAppels.length} total` : `${_allAppels.length} AO`;
+}
+
+function toggleMesAO(el) {
+  mesAOSeulement = !mesAOSeulement;
+  el.classList.toggle('active', mesAOSeulement);
+  el.style.color        = mesAOSeulement ? '#0a0c10'       : 'var(--green)';
+  el.style.borderColor  = mesAOSeulement ? 'var(--green)'  : 'color-mix(in srgb,var(--green) 40%,transparent)';
+  majCompteurAO();
+  renderSeaoTable(_allAppels);
+}
+
+function activerMesAO() {
+  if (!mesAOSeulement) toggleMesAO(document.getElementById('btn-mes-ao'));
 }
 
 function filtreAnnee(annee, el) {
