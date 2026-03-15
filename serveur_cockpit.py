@@ -147,24 +147,29 @@ def seao_dashboard():
     conn = _seao_conn()
     if not conn:
         return {"error": "seao.db introuvable — lancer seao_scraper.py --sync"}
-    params   = _params(conn)
-    mon_neq  = params.get("mon_neq", "")
+    params        = _params(conn)
+    mon_neq       = params.get("mon_neq", "")
+    mon_nom_like  = params.get("mon_nom_like", "")
 
     total_ao  = conn.execute("SELECT COUNT(*) FROM appels_offres").fetchone()[0]
     ao_actifs = conn.execute("SELECT COUNT(*) FROM appels_offres WHERE statut='active'").fetchone()[0]
-    mes_ao    = conn.execute("SELECT COUNT(*) FROM mes_projets WHERE mon_montant IS NOT NULL").fetchone()[0]
 
-    mon_nom   = params.get("mon_nom", "")
+    # mes_soumissions = toutes les lignes CRC dans la table soumissions
+    mes_ao = conn.execute(
+        "SELECT COUNT(*) FROM soumissions WHERE neq=? OR soumissionnaire LIKE ?",
+        (mon_neq, mon_nom_like)
+    ).fetchone()[0] if (mon_neq or mon_nom_like) else 0
+
     ao_gagnes = 0
     pos_moy   = None
-    if mon_neq or mon_nom:
+    if mon_neq or mon_nom_like:
         ao_gagnes = conn.execute(
-            "SELECT COUNT(*) FROM soumissions WHERE (neq=? OR soumissionnaire=?) AND gagnant=1",
-            (mon_neq, mon_nom)
+            "SELECT COUNT(*) FROM soumissions WHERE (neq=? OR soumissionnaire LIKE ?) AND gagnant=1",
+            (mon_neq, mon_nom_like)
         ).fetchone()[0]
         row = conn.execute(
-            "SELECT AVG(rang) FROM soumissions WHERE neq=? OR soumissionnaire=?",
-            (mon_neq, mon_nom)
+            "SELECT AVG(rang) FROM soumissions WHERE neq=? OR soumissionnaire LIKE ?",
+            (mon_neq, mon_nom_like)
         ).fetchone()
         pos_moy = round(row[0], 1) if row[0] else None
 
@@ -212,9 +217,9 @@ def seao_appels(
     conn = _seao_conn()
     if not conn:
         return {"error": "seao.db introuvable"}
-    params    = _params(conn)
-    mon_neq   = params.get("mon_neq", "")
-    mon_nom   = params.get("mon_nom", "")
+    params        = _params(conn)
+    mon_neq       = params.get("mon_neq", "")
+    mon_nom_like  = params.get("mon_nom_like", "")
     seuil_ec  = float(params.get("ecart_marge_eleve", "5"))
     marge_min = float(params.get("marge_min_viable", "8"))
 
@@ -234,12 +239,12 @@ def seao_appels(
         SELECT ao.ocid, ao.no_avis, ao.titre, ao.organisme, ao.region,
                ao.date_publication, ao.montant_estime, ao.statut, ao.url_seao,
                mp.ma_marge_pct, mp.mon_montant, mp.notes,
-               crc.rang  AS mon_rang,   crc.montant  AS mon_soumission,
+               crc.rang  AS mon_rang,   crc.montant  AS mon_montant,
                w.soumissionnaire AS gagnant_nom, w.montant AS gagnant_montant,
                s2.montant AS second_montant
         FROM appels_offres ao
         LEFT JOIN mes_projets mp ON mp.ocid = ao.ocid
-        LEFT JOIN soumissions crc ON crc.ocid = ao.ocid AND (crc.neq = ? OR crc.soumissionnaire = ?)
+        LEFT JOIN soumissions crc ON crc.ocid = ao.ocid AND (crc.neq = ? OR crc.soumissionnaire LIKE ?)
         LEFT JOIN (SELECT ocid, soumissionnaire, montant FROM soumissions WHERE gagnant=1) w  ON w.ocid  = ao.ocid
         LEFT JOIN (SELECT ocid, montant FROM soumissions WHERE rang=2) s2 ON s2.ocid = ao.ocid
         {wc}
@@ -247,7 +252,7 @@ def seao_appels(
         LIMIT ? OFFSET ?
     """
     offset = (page - 1) * par_page
-    rows  = conn.execute(query, [mon_neq, mon_nom] + vals + [par_page, offset]).fetchall()
+    rows  = conn.execute(query, [mon_neq, mon_nom_like] + vals + [par_page, offset]).fetchall()
     total = conn.execute(f"SELECT COUNT(*) FROM appels_offres ao {wc}", vals).fetchone()[0]
 
     results = []
@@ -255,10 +260,10 @@ def seao_appels(
         row = dict(r)
         ecart = None
         if row["mon_rang"] == 1:
-            if row["second_montant"] and row["mon_soumission"] and row["mon_soumission"] > 0:
-                ecart = round((row["second_montant"] - row["mon_soumission"]) / row["mon_soumission"] * 100, 1)
-        elif row["mon_soumission"] and row["gagnant_montant"] and row["gagnant_montant"] > 0:
-            ecart = round((row["mon_soumission"] - row["gagnant_montant"]) / row["gagnant_montant"] * 100, 1)
+            if row["second_montant"] and row["mon_montant"] and row["mon_montant"] > 0:
+                ecart = round((row["second_montant"] - row["mon_montant"]) / row["mon_montant"] * 100, 1)
+        elif row["mon_montant"] and row["gagnant_montant"] and row["gagnant_montant"] > 0:
+            ecart = round((row["mon_montant"] - row["gagnant_montant"]) / row["gagnant_montant"] * 100, 1)
         row["ecart_pct"] = ecart
 
         if row["mon_rang"] is None:

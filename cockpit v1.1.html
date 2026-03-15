@@ -1132,7 +1132,7 @@ function renderSeaoTable(appels) {
   }
   tbody.innerHTML = appels.map(a => {
     const f   = FLAG_CFG[a.flag] || FLAG_CFG.pas_soumis;
-    const mon = a.mon_soumission ? '$' + fmtMontant(a.mon_soumission) : '—';
+    const mon = a.mon_montant ? '$' + fmtMontant(a.mon_montant) : '—';
     const gNom = a.gagnant_nom ? shortNom(a.gagnant_nom) : '—';
     const gMon = a.gagnant_montant ? ' <span style="color:var(--text3);font-size:10px">$' + fmtMontant(a.gagnant_montant) + '</span>' : '';
     let ecartHtml = '—';
