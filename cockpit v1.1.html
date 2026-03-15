@@ -628,6 +628,7 @@ option { background: var(--bg2); }
             style="color:var(--green);border-color:color-mix(in srgb,var(--green) 40%,transparent);white-space:nowrap">
             🟢 Mes AOs
           </button>
+          <button class="btn btn-ghost" style="font-size:11px;padding:4px 10px" onclick="ouvrirFormAOPrive()">🔒 + AO privé</button>
           <button class="btn btn-ghost" style="font-size:11px;padding:4px 10px;margin-left:auto" title="Paramètres SEAO" onclick="ouvrirParams()">⚙</button>
         </div>
       </div>
@@ -814,6 +815,81 @@ option { background: var(--bg2); }
           <button class="btn btn-ghost" onclick="lancerSync()">↻ Sync SEAO</button>
         </div>
         <div id="params-status" style="font-size:11px;color:var(--text3)"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MODAL : AO PRIVÉ ══════════════════════════════════ -->
+<div class="modal-overlay" id="ao-prive-modal">
+  <div class="modal-box" style="max-width:560px">
+    <div class="modal-head">
+      <span class="modal-title">🔒 Nouvel AO privé (hors SEAO)</span>
+      <button class="btn btn-ghost" style="padding:4px 10px;font-size:12px" onclick="fermerModal('ao-prive-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div>
+        <div class="modal-section-title">Appel d'offres</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div class="field-group" style="grid-column:1/-1">
+            <label class="field-label">Titre *</label>
+            <input type="text" id="priv-titre" placeholder="Description du contrat">
+          </div>
+          <div class="field-group">
+            <label class="field-label">Organisme</label>
+            <input type="text" id="priv-organisme" placeholder="Nom du client">
+          </div>
+          <div class="field-group">
+            <label class="field-label">Région</label>
+            <input type="text" id="priv-region" placeholder="ex: Montréal">
+          </div>
+          <div class="field-group">
+            <label class="field-label">Date ouverture</label>
+            <input type="date" id="priv-date">
+          </div>
+          <div class="field-group">
+            <label class="field-label">Montant estimé $</label>
+            <input type="number" id="priv-montant-estime" placeholder="ex: 500000">
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="modal-section-title">Notre soumission</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+          <div class="field-group">
+            <label class="field-label">Mon rang</label>
+            <input type="number" id="priv-mon-rang" placeholder="ex: 2" min="1">
+          </div>
+          <div class="field-group">
+            <label class="field-label">Mon montant $</label>
+            <input type="number" id="priv-mon-montant" placeholder="ex: 480000">
+          </div>
+          <div class="field-group">
+            <label class="field-label">Ma marge %</label>
+            <input type="number" id="priv-marge" placeholder="ex: 12" step="0.1">
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="modal-section-title">Résultat</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div class="field-group">
+            <label class="field-label">Gagnant (nom)</label>
+            <input type="text" id="priv-gagnant-nom" placeholder="Nom du compétiteur">
+          </div>
+          <div class="field-group">
+            <label class="field-label">Montant gagnant $</label>
+            <input type="number" id="priv-gagnant-montant" placeholder="ex: 450000">
+          </div>
+        </div>
+      </div>
+      <div class="field-group">
+        <label class="field-label">Notes</label>
+        <input type="text" id="priv-notes" placeholder="Remarques, contexte...">
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;margin-top:4px">
+        <button class="btn btn-primary" onclick="creerAOPrive()">Créer l'AO</button>
+        <button class="btn btn-ghost" onclick="fermerModal('ao-prive-modal')">Annuler</button>
       </div>
     </div>
   </div>
@@ -1153,6 +1229,7 @@ function renderSeaoTable(appels) {
     return;
   }
   tbody.innerHTML = liste.map(a => {
+    const isPriv = a.source === 'prive';
     const f   = dotFromRang(a.mon_rang);
     const mon = a.mon_montant ? '$' + fmtMontant(a.mon_montant) : '—';
     const gNom = a.gagnant_nom ? shortNom(a.gagnant_nom) : '—';
@@ -1163,9 +1240,12 @@ function renderSeaoTable(appels) {
       const color = a.ecart_pct > 10 ? 'var(--yellow)' : a.ecart_pct < 0 ? 'var(--text3)' : 'var(--green)';
       ecartHtml = `<span style="color:${color}">${sign}${a.ecart_pct}%</span>`;
     }
+    const flagCell = isPriv
+      ? `<td style="text-align:center" title="AO privé (hors SEAO)"><span style="font-size:12px">🔒</span></td>`
+      : `<td style="text-align:center" title="${f.tip}"><span class="flag ${f.cls}"></span></td>`;
     return `
       <tr style="cursor:pointer" onclick="ouvrirAODetail('${esc(a.no_avis)}')">
-        <td style="text-align:center" title="${f.tip}"><span class="flag ${f.cls}"></span></td>
+        ${flagCell}
         <td style="color:var(--text3);font-size:11px;white-space:nowrap">${a.date_publication || '—'}</td>
         <td style="color:var(--text);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(a.titre)}">${esc(a.titre)}</td>
         <td style="color:var(--text2);font-size:11px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(a.organisme)}">${esc(a.organisme)}</td>
@@ -1431,6 +1511,50 @@ async function lancerSync() {
 }
 
 function fermerModal(id) { document.getElementById(id).classList.remove('open'); }
+
+// ── AO PRIVÉ ─────────────────────────────────────────────
+function ouvrirFormAOPrive() {
+  ['priv-titre','priv-organisme','priv-region','priv-montant-estime',
+   'priv-mon-rang','priv-mon-montant','priv-marge',
+   'priv-gagnant-nom','priv-gagnant-montant','priv-notes'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+  document.getElementById('priv-date').value = new Date().toISOString().slice(0,10);
+  document.getElementById('ao-prive-modal').classList.add('open');
+}
+
+async function creerAOPrive() {
+  const titre = document.getElementById('priv-titre').value.trim();
+  if (!titre) { toast('Le titre est requis', 'error'); return; }
+  const body = {
+    titre,
+    organisme:       document.getElementById('priv-organisme').value.trim(),
+    region:          document.getElementById('priv-region').value.trim(),
+    date_ouverture:  document.getElementById('priv-date').value,
+    montant_estime:  parseFloatOrNull(document.getElementById('priv-montant-estime').value),
+    mon_rang:        parseFloatOrNull(document.getElementById('priv-mon-rang').value),
+    mon_montant:     parseFloatOrNull(document.getElementById('priv-mon-montant').value),
+    ma_marge_pct:    parseFloatOrNull(document.getElementById('priv-marge').value),
+    gagnant_nom:     document.getElementById('priv-gagnant-nom').value.trim(),
+    gagnant_montant: parseFloatOrNull(document.getElementById('priv-gagnant-montant').value),
+    notes:           document.getElementById('priv-notes').value.trim(),
+  };
+  if (body.mon_rang) body.mon_rang = parseInt(body.mon_rang);
+  try {
+    const r = await fetch(`${API}/seao/ao_prive`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const d = await r.json();
+    if (d.ok) {
+      fermerModal('ao-prive-modal');
+      toast(`AO privé créé : ${d.no_avis}`, 'success');
+      await Promise.all([loadSeaoDashboard(), loadSeaoAppels()]);
+    } else {
+      toast(d.error || 'Erreur création', 'error');
+    }
+  } catch(e) { toast('Erreur serveur', 'error'); }
+}
 
 // Helpers SEAO
 function fmtMontant(n) {

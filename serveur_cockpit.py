@@ -135,11 +135,15 @@ def migrate_seao_db():
     if not os.path.exists(SEAO_DB):
         return
     conn = sqlite3.connect(SEAO_DB)
-    try:
-        conn.execute("ALTER TABLE soumissions ADD COLUMN montant_manuel REAL")
-        conn.commit()
-    except Exception:
-        pass  # colonne déjà existante
+    for sql in [
+        "ALTER TABLE soumissions ADD COLUMN montant_manuel REAL",
+        "ALTER TABLE appels_offres ADD COLUMN source TEXT DEFAULT 'seao'",
+    ]:
+        try:
+            conn.execute(sql)
+            conn.commit()
+        except Exception:
+            pass  # colonne déjà existante
     conn.close()
 
 
@@ -251,6 +255,7 @@ def seao_appels(
     query = f"""
         SELECT ao.ocid, ao.no_avis, ao.titre, ao.organisme, ao.region,
                ao.date_publication, ao.montant_estime, ao.statut, ao.url_seao,
+               COALESCE(ao.source, 'seao') AS source,
                mp.ma_marge_pct, mp.mon_montant, mp.notes,
                crc.rang  AS mon_rang,   COALESCE(crc.montant, crc.montant_manuel) AS mon_montant,
                w.soumissionnaire AS gagnant_nom, w.montant AS gagnant_montant,
@@ -446,6 +451,62 @@ def seao_sync(background_tasks: BackgroundTasks):
         )
     background_tasks.add_task(run_sync)
     return {"status": "started", "message": "Sync SEAO lancé en arrière-plan"}
+
+
+@app.post("/seao/ao_prive")
+def seao_creer_ao_prive(body: dict):
+    conn = _seao_conn()
+    if not conn:
+        return {"error": "seao.db introuvable"}
+    params      = _params(conn)
+    mon_neq     = params.get("mon_neq", "")
+    mon_nom_raw = params.get("mon_nom_like", "").replace("%", "").strip() or "CRC"
+
+    ts      = datetime.now().strftime("%Y%m%d%H%M%S")
+    ocid    = f"prive-{ts}"
+    no_avis = f"PRIVE-{ts}"
+
+    titre          = body.get("titre") or "AO privé"
+    organisme      = body.get("organisme", "")
+    date_ouverture = body.get("date_ouverture", "")
+    montant_estime = body.get("montant_estime")
+    region         = body.get("region", "")
+    mon_rang       = body.get("mon_rang")
+    mon_montant    = body.get("mon_montant")
+    ma_marge_pct   = body.get("ma_marge_pct")
+    gagnant_nom    = body.get("gagnant_nom", "")
+    gagnant_montant= body.get("gagnant_montant")
+    notes          = body.get("notes", "")
+
+    conn.execute("""
+        INSERT INTO appels_offres
+            (ocid, no_avis, titre, organisme, region,
+             date_publication, date_ouverture, montant_estime, statut, source)
+        VALUES (?,?,?,?,?,?,?,?,'ferme','prive')
+    """, (ocid, no_avis, titre, organisme, region,
+          date_ouverture, date_ouverture, montant_estime))
+
+    if mon_rang is not None:
+        conn.execute("""
+            INSERT INTO soumissions (ocid, neq, soumissionnaire, rang, montant, gagnant)
+            VALUES (?,?,?,?,?,?)
+        """, (ocid, mon_neq, mon_nom_raw, mon_rang, mon_montant, 1 if mon_rang == 1 else 0))
+
+    if gagnant_nom and mon_rang != 1:
+        conn.execute("""
+            INSERT INTO soumissions (ocid, soumissionnaire, rang, montant, gagnant)
+            VALUES (?,?,1,?,1)
+        """, (ocid, gagnant_nom, gagnant_montant))
+
+    if ma_marge_pct is not None or mon_montant is not None:
+        conn.execute("""
+            INSERT OR REPLACE INTO mes_projets (ocid, ma_marge_pct, mon_montant, notes, date_maj)
+            VALUES (?,?,?,?,?)
+        """, (ocid, ma_marge_pct, mon_montant, notes, datetime.now().isoformat()[:19]))
+
+    conn.commit()
+    conn.close()
+    return {"ok": True, "no_avis": no_avis}
 
 
 app.mount("/static", StaticFiles(directory=COCKPIT_DIR), name="static")

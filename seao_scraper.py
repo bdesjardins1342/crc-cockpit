@@ -3,10 +3,12 @@ seao_scraper.py — Synchronisation SEAO vers SQLite
 Données ouvertes Québec (format OCDS)
 
 Usage :
-  python seao_scraper.py --sync    # télécharge les fichiers manquants
-  python seao_scraper.py --stats   # affiche les stats de la DB
-  python seao_scraper.py --reset   # recrée la DB (efface tout)
-  python seao_scraper.py --show N  # affiche N records bruts (debug)
+  python seao_scraper.py --sync          # télécharge les fichiers manquants
+  python seao_scraper.py --resync        # re-parse tous les fichiers en cache
+  python seao_scraper.py --resync --max 20  # re-parse les 20 plus récents
+  python seao_scraper.py --stats         # affiche les stats de la DB
+  python seao_scraper.py --reset         # recrée la DB (efface tout)
+  python seao_scraper.py --show N        # affiche N records bruts (debug)
 """
 
 import argparse
@@ -26,7 +28,8 @@ CKAN_API = (
     "https://www.donneesquebec.ca/recherche/api/3/action/"
     "package_show?id=systeme-electronique-dappel-doffres-seao"
 )
-DB_PATH = Path(__file__).parent / "seao.db"
+DB_PATH  = Path(__file__).parent / "seao.db"
+DATA_DIR = Path(__file__).parent / "data"   # cache des fichiers JSON SEAO
 HEADERS  = {"User-Agent": "CRC-Cockpit/1.0 (contact: crc@crc.qc.ca)"}
 
 # Catégories de construction retenues (mainProcurementCategory OCDS)
@@ -194,6 +197,22 @@ def fetch_json(url: str, retries: int = 3, delay: float = 4.0) -> dict | list:
 
 
 # ---------------------------------------------------------------------------
+# Cache local
+# ---------------------------------------------------------------------------
+
+def _charger_fichier(nom: str, url: str) -> dict:
+    """Retourne le JSON depuis le cache local; télécharge et met en cache sinon."""
+    DATA_DIR.mkdir(exist_ok=True)
+    chemin = DATA_DIR / nom
+    if chemin.exists():
+        return json.loads(chemin.read_text(encoding="utf-8"))
+    time.sleep(2)
+    data = fetch_json(url)
+    chemin.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    return data
+
+
+# ---------------------------------------------------------------------------
 # Parsing OCDS
 # ---------------------------------------------------------------------------
 
@@ -240,9 +259,13 @@ def parse_release(r: dict, fichier_source: str) -> tuple[dict | None, list[dict]
                 break
     if montant_estime is None:
         for bid in r.get("bids", []):
-            if bid.get("value"):
-                montant_estime = float(bid["value"])
-                break
+            v = bid.get("value")
+            if v is not None:
+                try:
+                    montant_estime = float(v)
+                    break
+                except (TypeError, ValueError):
+                    pass
 
     # Catégorie textuelle
     add_cats = tender.get("additionalProcurementCategories", [])
@@ -278,37 +301,80 @@ def parse_release(r: dict, fichier_source: str) -> tuple[dict | None, list[dict]
         "fichier_source": fichier_source,
     }
 
-    # Soumissions (awards + tenderers)
-    soumissions = []
-    gagnants_ids = set()
+    # ── Index NEQ → nom depuis parties et tenderers ──────────────────────────
+    neq_to_nom: dict[str, str] = {}
+    for p in parties:
+        pid  = p.get("id", "")
+        pnom = p.get("name", "")
+        if pid and pnom:
+            neq_to_nom[pid.replace("FO-", "")] = pnom
+    for t in tender.get("tenderers", []):
+        tid  = t.get("id", "")
+        tnom = t.get("name", "")
+        if tid and tnom:
+            neq_to_nom[tid.replace("FO-", "")] = tnom
+
+    # ── Gagnants depuis awards ────────────────────────────────────────────────
+    gagnants_neq: set[str] = set()
     for award in r.get("awards", []):
         for s in award.get("suppliers", []):
-            gagnants_ids.add(s.get("id", ""))
+            sid = s.get("id", "")
+            gagnants_neq.add(sid.replace("FO-", ""))
 
-    for i, t in enumerate(tender.get("tenderers", []), 1):
-        sid  = t.get("id", "")
-        nom  = t.get("name", "")
-        neq  = ""
-        montant_s = None
-        # Chercher NEQ et montant dans parties
-        for p in parties:
-            if p.get("id") == sid:
-                neq = p.get("details", {}).get("neq", "")
-                break
-        # Chercher montant dans awards
-        for award in r.get("awards", []):
-            for s in award.get("suppliers", []):
-                if s.get("id") == sid:
-                    montant_s = award.get("value", {}).get("amount")
+    # ── Soumissions depuis bids (format réel SEAO) ────────────────────────────
+    # Format : [{"id": "FO-{NEQ}", "value": float, "valueUnit": "1"}, ...]
+    soumissions = []
+    bids_raw = r.get("bids", [])
 
-        soumissions.append({
-            "ocid": ocid,
-            "rang": i,
-            "soumissionnaire": nom,
-            "neq": neq,
-            "montant": float(montant_s) if montant_s is not None else None,
-            "gagnant": 1 if sid in gagnants_ids else 0,
-        })
+    if bids_raw:
+        parsed = []
+        for bid in bids_raw:
+            bid_id  = bid.get("id", "")
+            neq     = bid_id.replace("FO-", "") if bid_id.startswith("FO-") else bid_id
+            v       = bid.get("value")
+            montant = None
+            if v is not None:
+                try:
+                    montant = float(v)
+                except (TypeError, ValueError):
+                    pass
+            parsed.append({"neq": neq, "montant": montant})
+
+        # Trier par montant croissant (None en dernier → rang le plus élevé)
+        parsed.sort(key=lambda x: (x["montant"] is None, x["montant"] or 0))
+
+        for rang, b in enumerate(parsed, 1):
+            soumissions.append({
+                "ocid":           ocid,
+                "rang":           rang,
+                "soumissionnaire": neq_to_nom.get(b["neq"], ""),
+                "neq":            b["neq"],
+                "montant":        b["montant"],
+                "gagnant":        1 if b["neq"] in gagnants_neq else 0,
+            })
+
+    else:
+        # Fallback pour AOs actifs (pas encore de bids) : tenderers sans montant
+        for i, t in enumerate(tender.get("tenderers", []), 1):
+            sid = t.get("id", "")
+            neq = sid.replace("FO-", "") if sid.startswith("FO-") else ""
+            nom = t.get("name", "") or neq_to_nom.get(neq, "")
+            # Montant depuis awards si disponible
+            montant_s = None
+            for award in r.get("awards", []):
+                for s in award.get("suppliers", []):
+                    if s.get("id") == sid:
+                        av = award.get("value", {})
+                        if av and av.get("amount"):
+                            montant_s = float(av["amount"])
+            soumissions.append({
+                "ocid":           ocid,
+                "rang":           i,
+                "soumissionnaire": nom,
+                "neq":            neq,
+                "montant":        montant_s,
+                "gagnant":        1 if neq in gagnants_neq else 0,
+            })
 
     return ao, soumissions
 
@@ -371,7 +437,7 @@ def cmd_sync(verbose: bool = True, max_fichiers: int = 0) -> None:
         time.sleep(2)  # politesse serveur
 
         try:
-            data = fetch_json(url)
+            data = _charger_fichier(nom, url)
         except Exception as e:
             print(f"  ERREUR téléchargement : {e}")
             continue
@@ -400,10 +466,15 @@ def cmd_sync(verbose: bool = True, max_fichiers: int = 0) -> None:
 
             for s in soumissions:
                 conn.execute("""
-                    INSERT OR IGNORE INTO soumissions
+                    INSERT INTO soumissions
                         (ocid, rang, soumissionnaire, neq, montant, gagnant)
                     VALUES
                         (:ocid, :rang, :soumissionnaire, :neq, :montant, :gagnant)
+                    ON CONFLICT(ocid, soumissionnaire) DO UPDATE SET
+                        rang=excluded.rang,
+                        neq=excluded.neq,
+                        montant=COALESCE(excluded.montant, soumissions.montant),
+                        gagnant=excluded.gagnant
                 """, s)
                 nb_soum += 1
 
@@ -421,6 +492,144 @@ def cmd_sync(verbose: bool = True, max_fichiers: int = 0) -> None:
 
     conn.close()
     print(f"\n=== SYNC TERMINÉ : {total_ao} nouveaux AO, {total_soum} soumissions ===")
+
+
+# ---------------------------------------------------------------------------
+# Resync (re-parse depuis cache)
+# ---------------------------------------------------------------------------
+
+def _upsert_ao(conn: sqlite3.Connection, ao: dict) -> None:
+    conn.execute("""
+        INSERT OR REPLACE INTO appels_offres
+            (ocid, no_avis, titre, organisme, region, date_publication,
+             date_ouverture, montant_estime, categorie, sous_categorie,
+             nb_soumissions, statut, url_seao, fichier_source)
+        VALUES
+            (:ocid, :no_avis, :titre, :organisme, :region, :date_publication,
+             :date_ouverture, :montant_estime, :categorie, :sous_categorie,
+             :nb_soumissions, :statut, :url_seao, :fichier_source)
+    """, ao)
+
+
+def cmd_resync(max_fichiers: int = 0) -> None:
+    if not DB_PATH.exists():
+        print("DB introuvable. Lancer --sync d'abord.")
+        return
+
+    conn = get_db()
+
+    # Fichiers à re-parser (les plus récents en premier)
+    sql = "SELECT nom FROM fichiers_importes ORDER BY date_import DESC"
+    if max_fichiers > 0:
+        sql += f" LIMIT {max_fichiers}"
+    noms = [r["nom"] for r in conn.execute(sql).fetchall()]
+
+    if not noms:
+        print("Aucun fichier importé. Lancer --sync d'abord.")
+        conn.close()
+        return
+
+    limite_txt = f" (limité aux {max_fichiers} plus récents)" if max_fichiers > 0 else ""
+    print(f"Re-parsing de {len(noms)} fichier(s){limite_txt}...")
+
+    # URLs CKAN pour les fichiers absents du cache local
+    noms_sans_cache = [n for n in noms if not (DATA_DIR / n).exists()]
+    url_map: dict[str, str] = {}
+    if noms_sans_cache:
+        print(f"  {len(noms_sans_cache)} fichier(s) absent(s) du cache — récupération des URLs CKAN...")
+        time.sleep(2)
+        ckan = fetch_json(CKAN_API)
+        url_map = {
+            r["name"]: r["url"]
+            for r in ckan["result"]["resources"]
+            if r.get("format", "").lower() == "json"
+        }
+
+    total_fichiers = 0
+    total_ao       = 0
+    total_soum     = 0
+    total_montants = 0
+
+    for nom in noms:
+        url = url_map.get(nom, "")
+        if not (DATA_DIR / nom).exists() and not url:
+            print(f"  SKIP {nom} — absent du cache et de CKAN")
+            continue
+
+        print(f"  {nom}", end="", flush=True)
+        try:
+            data = _charger_fichier(nom, url)
+        except Exception as e:
+            print(f" — ERREUR : {e}")
+            continue
+
+        releases = data.get("releases", [])
+
+        # ── 1re passe : parser tous les releases filtrés ────────────────────
+        parsed_releases: list[tuple[dict, list[dict]]] = []
+        ocids: list[str] = []
+        for r in releases:
+            ao, soumissions = parse_release(r, nom)
+            if ao is None:
+                continue
+            parsed_releases.append((ao, soumissions))
+            ocids.append(ao["ocid"])
+
+        if not ocids:
+            print(f" — 0 AO région")
+            continue
+
+        # ── Sauvegarder les montant_manuel saisis manuellement ──────────────
+        ph = ",".join("?" * len(ocids))
+        manuels: dict[tuple[str, str], float] = {}
+        for row in conn.execute(
+            f"SELECT ocid, neq, montant_manuel FROM soumissions"
+            f" WHERE ocid IN ({ph}) AND montant_manuel IS NOT NULL",
+            ocids
+        ).fetchall():
+            manuels[(row["ocid"], row["neq"])] = row["montant_manuel"]
+
+        # ── Supprimer les soumissions existantes pour ces AOs ───────────────
+        conn.execute(f"DELETE FROM soumissions WHERE ocid IN ({ph})", ocids)
+
+        # ── Upsert AOs et réinsérer soumissions ─────────────────────────────
+        nb_ao   = 0
+        nb_soum = 0
+        nb_mont = 0
+
+        for ao, soumissions in parsed_releases:
+            _upsert_ao(conn, ao)
+            nb_ao += 1
+            for s in soumissions:
+                montant_manuel = manuels.get((s["ocid"], s["neq"]))
+                conn.execute("""
+                    INSERT OR IGNORE INTO soumissions
+                        (ocid, rang, soumissionnaire, neq, montant, gagnant, montant_manuel)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (s["ocid"], s["rang"], s["soumissionnaire"],
+                      s["neq"], s["montant"], s["gagnant"], montant_manuel))
+                nb_soum += 1
+                if s["montant"] is not None:
+                    nb_mont += 1
+
+        conn.execute(
+            "UPDATE fichiers_importes SET date_import=? WHERE nom=?",
+            (datetime.now().isoformat()[:19], nom)
+        )
+        conn.commit()
+
+        print(f" — {nb_ao} AO, {nb_soum} soumissions ({nb_mont} avec montant)")
+        total_fichiers += 1
+        total_ao       += nb_ao
+        total_soum     += nb_soum
+        total_montants += nb_mont
+
+    conn.close()
+    print(
+        f"\n=== RESYNC TERMINÉ : {total_fichiers} fichiers re-parsés"
+        f" — {total_ao} AO, {total_soum} soumissions"
+        f", {total_montants} montants mis à jour ==="
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -537,15 +746,19 @@ def cmd_show(n: int = 3) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="SEAO Scraper — CRC Cockpit")
     grp = parser.add_mutually_exclusive_group(required=True)
-    grp.add_argument("--sync",  action="store_true", help="Télécharge les nouveaux fichiers")
-    parser.add_argument("--max", type=int, default=0, metavar="N", help="Limite à N fichiers (--sync)")
-    grp.add_argument("--stats", action="store_true", help="Affiche les stats de la DB")
-    grp.add_argument("--reset", action="store_true", help="Recrée la DB")
-    grp.add_argument("--show",  type=int, metavar="N", help="Affiche N records bruts (debug)")
+    grp.add_argument("--sync",   action="store_true", help="Télécharge les nouveaux fichiers")
+    grp.add_argument("--resync", action="store_true", help="Re-parse les fichiers depuis le cache local")
+    grp.add_argument("--stats",  action="store_true", help="Affiche les stats de la DB")
+    grp.add_argument("--reset",  action="store_true", help="Recrée la DB")
+    grp.add_argument("--show",   type=int, metavar="N", help="Affiche N records bruts (debug)")
+    parser.add_argument("--max", type=int, default=0, metavar="N",
+                        help="Limite à N fichiers (--sync et --resync)")
     args = parser.parse_args()
 
     if args.sync:
         cmd_sync(max_fichiers=args.max)
+    elif args.resync:
+        cmd_resync(max_fichiers=args.max)
     elif args.stats:
         cmd_stats()
     elif args.reset:
