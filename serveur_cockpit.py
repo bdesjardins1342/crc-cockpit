@@ -242,7 +242,13 @@ def seao_appels(
 
     where, vals = [], []
     if annee:
-        where.append("strftime('%Y', ao.date_publication) = ?"); vals.append(annee)
+        annees = [a.strip() for a in annee.split(',') if a.strip()]
+        if len(annees) == 1:
+            where.append("strftime('%Y', ao.date_publication) = ?"); vals.append(annees[0])
+        elif len(annees) > 1:
+            placeholders = ','.join('?' * len(annees))
+            where.append(f"strftime('%Y', ao.date_publication) IN ({placeholders})")
+            vals.extend(annees)
     if date_debut:
         where.append("ao.date_publication >= ?"); vals.append(date_debut)
     if date_fin:
