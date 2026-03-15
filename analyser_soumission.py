@@ -95,14 +95,15 @@ MOTS_CLES_CONTRAT = [
 # Ordre d'assemblage du corpus (valeur = priorité, 1 = tête)
 TYPE_ORDRE: dict[str, int] = {
     "ADDENDA":          2,
-    "CONTRAT":          3,
-    "RÉGIE":            4,
-    "FORMULAIRE":       5,
-    "DEVIS_ARCH":       6,
-    "DEVIS_ADMIN":      7,
-    "SOUMISSION_REÇUE": 8,
-    "AUTRE":            9,
-    "PLANS":           10,  # exclu du corpus Claude
+    "AVIS_AO":          3,
+    "CONTRAT":          4,
+    "RÉGIE":            5,
+    "FORMULAIRE":       6,
+    "DEVIS_ARCH":       7,
+    "DEVIS_ADMIN":      8,
+    "SOUMISSION_REÇUE": 9,
+    "AUTRE":           10,
+    "PLANS":           11,  # exclu du corpus Claude
 }
 
 # Patterns DEVIS_ARCH — filtrage 3 couches
@@ -694,6 +695,8 @@ def classifier_document(nom: str, dossier: str) -> str:
         return "DEVIS_ARCH"
     if re.search(r"devis", nom, re.IGNORECASE) and re.search(r"admin", nom, re.IGNORECASE):
         return "DEVIS_ADMIN"
+    if re.search(r"avis.{0,10}appel|AAO-|SEAO", nom, re.IGNORECASE):
+        return "AVIS_AO"
     if re.search(r"plans?", nom, re.IGNORECASE):
         return "PLANS"
     return "AUTRE"
@@ -937,6 +940,8 @@ def traiter_document(
     SOUMISSION_REÇUE -> résumé 500 chars
     AUTRE           -> filtre par mots-clés si > 5 000 chars
     """
+    if type_doc == "AVIS_AO":
+        return extraire_champs_avis_ao(texte), 0
     if type_doc in ("CONTRAT", "RÉGIE"):
         return extraire_champs_contrat(texte), 0
     if type_doc in ("FORMULAIRE", "ADDENDA"):
@@ -1129,6 +1134,74 @@ def extraire_champs_contrat(texte: str) -> str:
         lignes.extend(blocs_annexes)
 
     lignes.append("\n=== FIN EXTRACTION ===")
+    return "\n".join(lignes)
+
+
+# ---------------------------------------------------------------------------
+# Extraction Avis d'appel d'offres — AVIS_AO
+# ---------------------------------------------------------------------------
+
+def extraire_champs_avis_ao(texte: str) -> str:
+    """
+    Extrait les champs clés d'un Avis d'appel d'offres (SEAO / SQI / AAO)
+    par regex + fenêtre de contexte (300 chars).
+    Retourne un texte structuré à intégrer en tête de corpus.
+    """
+    FENETRE = 300
+
+    def contextes(pattern: str) -> list[str]:
+        resultats: list[str] = []
+        for m in re.finditer(pattern, texte, re.IGNORECASE | re.DOTALL):
+            debut = max(0, m.start() - FENETRE // 2)
+            fin   = min(len(texte), m.end() + FENETRE // 2)
+            ctx   = texte[debut:fin].replace("\n", " ").strip()
+            if ctx and ctx not in resultats:
+                resultats.append(ctx)
+        return resultats[:3]
+
+    def contexte_apres(pattern: str, longueur: int = 200) -> list[str]:
+        resultats: list[str] = []
+        for m in re.finditer(pattern, texte, re.IGNORECASE):
+            fin = min(len(texte), m.end() + longueur)
+            ctx = texte[m.start():fin].replace("\n", " ").strip()
+            if ctx and ctx not in resultats:
+                resultats.append(ctx)
+        return resultats[:2]
+
+    lignes: list[str] = ["=== AVIS D'APPEL D'OFFRES ===\n"]
+
+    def ajouter(titre: str, valeurs: list[str]) -> None:
+        if valeurs:
+            for v in valeurs:
+                lignes.append(f"[{titre}] {v}")
+        else:
+            lignes.append(f"[{titre}] ABSENT — vérifier manuellement")
+
+    # Identification du contrat
+    ajouter("NUMÉRO DE CONTRAT",
+            contextes(r"Num[eé]ro\s+de\s+contrat\s*:\s*(\S+)"))
+    ajouter("TITRE DU CONTRAT",
+            contextes(r"Titre\s+du\s+contrat\s*:\s*([^\n]+)"))
+
+    # Durée et dates
+    ajouter("DURÉE TRAVAUX",
+            contextes(r"\d+\s+semaines?"))
+    ajouter("DATE DÉBUT PROBABLE",
+            contextes(r"date\s+probable\s+du\s+d[eé]but.{0,100}"))
+    ajouter("RÉCEPTION DES SOUMISSIONS",
+            contextes(r"r[eé]ception|date\s+limite|heure\s+limite"))
+
+    # Garantie et pénalité
+    ajouter("GARANTIE DE SOUMISSION",
+            contexte_apres(r"garantie\s+de\s+soumission", 150))
+    ajouter("PÉNALITÉ",
+            contexte_apres(r"p[eé]nalit[eé]", 200))
+
+    # Visite / rencontre
+    ajouter("VISITE / RENCONTRE OBLIGATOIRE",
+            contexte_apres(r"visite|rencontre", 200))
+
+    lignes.append("\n=== FIN AVIS AO ===")
     return "\n".join(lignes)
 
 
@@ -1629,8 +1702,17 @@ def analyser_projet(nom_projet: str, client: anthropic.Anthropic, forcer: bool =
     nb_exec_total = 0
     plans_exclus: list[str] = []
 
+    _RE_CONTENU_AVIS_AO = re.compile(
+        r"avis\s+d.appel\s+d.offres|AAO-|Soci[eé]t[eé]\s+qu[eé]b[eé]coise\s+des\s+infrastructures"
+        r"|Num[eé]ro\s+de\s+contrat\s*:|SEAO",
+        re.IGNORECASE,
+    )
+
     for doc in docs_extraits:
         type_doc = classifier_document(doc["nom"], doc["dossier"])
+        # Reclassification par contenu si le nom ne suffit pas
+        if type_doc in ("AUTRE", "DEVIS_ADMIN") and _RE_CONTENU_AVIS_AO.search(doc["texte_brut"][:3000]):
+            type_doc = "AVIS_AO"
         doc["type"] = type_doc
         doc["taille_brute"] = len(doc["texte_brut"])
         structure = None

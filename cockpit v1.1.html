@@ -359,6 +359,83 @@ option { background: var(--bg2); }
 .md .critique { color: var(--red); }
 .md .ok { color: var(--green); }
 
+/* ── SEAO / MARCHÉ ───────────────────────────────────── */
+.filter-bar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 10px 16px; background: var(--bg3);
+  border-bottom: 1px solid var(--border);
+}
+.year-btn {
+  padding: 3px 10px; border-radius: 3px; font-size: 11px;
+  background: transparent; border: 1px solid var(--border2);
+  color: var(--text2); cursor: pointer; font-family: var(--mono);
+  transition: all 0.15s;
+}
+.year-btn:hover { border-color: var(--accent); color: var(--accent); }
+.year-btn.active { background: var(--accent); color: #0a0c10; border-color: var(--accent); font-weight: 700; }
+
+.kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.kpi-card {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 6px; padding: 16px;
+}
+.kpi-label { font-size: 9px; letter-spacing: 2px; text-transform: uppercase; color: var(--text3); margin-bottom: 8px; }
+.kpi-value { font-size: 26px; font-weight: 700; font-family: var(--sans); color: var(--text); line-height: 1; }
+.kpi-sub   { font-size: 10px; color: var(--text3); margin-top: 6px; }
+
+.alert-bar {
+  display: flex; align-items: flex-start; gap: 10px;
+  background: rgba(234,179,8,0.08); border: 1px solid rgba(234,179,8,0.3);
+  border-radius: 6px; padding: 10px 14px; font-size: 12px; color: var(--yellow);
+}
+.alert-links { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+
+.seao-layout { display: grid; grid-template-columns: 1fr 230px; gap: 14px; align-items: start; }
+
+.flag { display: inline-block; width: 8px; height: 8px; border-radius: 50%; }
+.flag-gagne     { background: var(--green);  box-shadow: 0 0 5px var(--green); }
+.flag-aurait-pu { background: var(--yellow); box-shadow: 0 0 5px var(--yellow); }
+.flag-trop-bas  { background: var(--red);    box-shadow: 0 0 5px var(--red); }
+.flag-perdu     { background: var(--red);    opacity: 0.6; }
+.flag-rien      { background: var(--border2); }
+
+.comp-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 5px 10px; border-radius: 3px; cursor: pointer;
+  font-size: 11px; color: var(--text2); transition: all 0.1s;
+}
+.comp-item:hover { background: var(--bg3); color: var(--text); }
+.comp-badge { font-size: 10px; color: var(--text3); display: flex; gap: 5px; white-space: nowrap; }
+
+/* ── MODALS ──────────────────────────────────────────── */
+.modal-overlay {
+  display: none; position: fixed; inset: 0; z-index: 200;
+  background: rgba(0,0,0,0.75); backdrop-filter: blur(3px);
+  align-items: center; justify-content: center;
+}
+.modal-overlay.open { display: flex; }
+.modal-box {
+  background: var(--bg2); border: 1px solid var(--border2);
+  border-radius: 8px; width: 800px; max-width: 96vw; max-height: 92vh;
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.modal-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 20px; border-bottom: 1px solid var(--border); background: var(--bg3);
+  flex-shrink: 0;
+}
+.modal-title { font-family: var(--sans); font-weight: 700; font-size: 14px; color: var(--text); }
+.modal-body  { padding: 20px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 18px; }
+.modal-section-title {
+  font-size: 9px; letter-spacing: 2px; text-transform: uppercase;
+  color: var(--text3); margin-bottom: 8px; padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+.info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 12px; }
+.info-grid > div { display: flex; flex-direction: column; gap: 3px; }
+.info-key { font-size: 9px; letter-spacing: 1px; text-transform: uppercase; color: var(--text3); }
+.info-val { color: var(--text2); }
+
 /* ── SCROLLBAR ───────────────────────────────────────── */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -406,6 +483,9 @@ option { background: var(--bg2); }
     </div>
     <div class="nav-item" onclick="showPage('livrables')">
       <span class="nav-icon">📄</span> Livrables
+    </div>
+    <div class="nav-item" onclick="showPage('marche')">
+      <span class="nav-icon">📈</span> Marché
     </div>
     <div class="nav-section" style="margin-top:12px">À venir</div>
     <div class="nav-item" style="opacity:0.4; cursor:default">
@@ -528,7 +608,203 @@ option { background: var(--bg2); }
       </div>
     </div>
 
+    <!-- PAGE: MARCHÉ -->
+    <div id="page-marche" style="display:none; flex-direction:column; gap:16px">
+
+      <!-- Filtre -->
+      <div class="panel" style="overflow:visible">
+        <div class="filter-bar">
+          <span style="font-size:10px;color:var(--text3);letter-spacing:1px;white-space:nowrap">PÉRIODE :</span>
+          <button class="year-btn" onclick="filtreAnnee('2023',this)">2023</button>
+          <button class="year-btn" onclick="filtreAnnee('2024',this)">2024</button>
+          <button class="year-btn active" onclick="filtreAnnee('2025',this)">2025</button>
+          <button class="year-btn" onclick="filtreAnnee('2026',this)">2026</button>
+          <span style="color:var(--border2)">|</span>
+          <input type="date" id="f-debut" style="width:130px">
+          <span style="color:var(--text3);font-size:11px">→</span>
+          <input type="date" id="f-fin" style="width:130px">
+          <button class="btn btn-ghost" style="font-size:11px;padding:4px 12px" onclick="appliquerFiltres()">Appliquer</button>
+          <button class="btn btn-ghost" style="font-size:11px;padding:4px 10px;margin-left:auto" title="Paramètres SEAO" onclick="ouvrirParams()">⚙</button>
+        </div>
+      </div>
+
+      <!-- KPIs -->
+      <div class="kpi-row">
+        <div class="kpi-card">
+          <div class="kpi-label">AO en DB</div>
+          <div class="kpi-value" id="kpi-total">—</div>
+          <div class="kpi-sub" id="kpi-actifs-sub"></div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Mes soumissions</div>
+          <div class="kpi-value" id="kpi-soumis">—</div>
+          <div class="kpi-sub" id="kpi-gagnes-sub"></div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Profit estimé</div>
+          <div class="kpi-value" id="kpi-profit">—</div>
+          <div class="kpi-sub">marge × montant saisi</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Position moyenne</div>
+          <div class="kpi-value" id="kpi-position">—</div>
+          <div class="kpi-sub">parmi soumissionnaires</div>
+        </div>
+      </div>
+
+      <!-- Alerte marge manquante -->
+      <div class="alert-bar" id="seao-alerte" style="display:none">
+        <span style="font-size:16px;flex-shrink:0">⚠</span>
+        <div>
+          <strong id="seao-alerte-txt"></strong>
+          <div class="alert-links" id="seao-alerte-links"></div>
+        </div>
+      </div>
+
+      <!-- Layout table + sidebar -->
+      <div class="seao-layout">
+
+        <!-- Table AO -->
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">Appels d'offres</span>
+            <span id="seao-total-txt" style="font-size:11px;color:var(--text3)"></span>
+          </div>
+          <div style="padding:0; overflow-x:auto">
+            <table class="projets-table" style="min-width:700px">
+              <thead>
+                <tr>
+                  <th style="width:30px"></th>
+                  <th>Date</th>
+                  <th>Titre</th>
+                  <th>Organisme</th>
+                  <th style="text-align:center">Rang</th>
+                  <th style="text-align:right">Mon montant</th>
+                  <th>Gagnant</th>
+                  <th style="text-align:right">Écart</th>
+                </tr>
+              </thead>
+              <tbody id="seao-table-body">
+                <tr><td colspan="8" style="color:var(--text3);text-align:center;padding:20px">Chargement...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Sidebar compétiteurs -->
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">Compétiteurs</span>
+            <button class="btn btn-ghost" style="font-size:10px;padding:2px 8px" onclick="loadCompetiteurs()">↻</button>
+          </div>
+          <div id="comp-sidebar" style="padding:6px; max-height:540px; overflow-y:auto">
+            <div id="comp-list-body" style="display:flex;flex-direction:column;gap:1px">
+              <div style="color:var(--text3);font-size:11px;padding:8px">Chargement...</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div><!-- /page-marche -->
+
   </main>
+</div>
+
+<!-- ═══ MODAL : DÉTAIL AO ═══════════════════════════════ -->
+<div class="modal-overlay" id="ao-modal">
+  <div class="modal-box">
+    <div class="modal-head">
+      <span class="modal-title" id="ao-modal-titre">Détail AO</span>
+      <button class="btn btn-ghost" style="padding:4px 10px;font-size:12px" onclick="fermerModal('ao-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div>
+        <div class="modal-section-title">Informations</div>
+        <div class="info-grid" id="ao-info"></div>
+      </div>
+      <div>
+        <div class="modal-section-title">Soumissions</div>
+        <table class="projets-table">
+          <thead><tr><th>Rang</th><th>Soumissionnaire</th><th style="text-align:right">Montant</th><th style="text-align:right">Écart</th><th></th></tr></thead>
+          <tbody id="ao-soum-body">
+            <tr><td colspan="5" style="color:var(--text3);text-align:center;padding:12px">Chargement...</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div>
+        <div class="modal-section-title">Mes données</div>
+        <div style="display:grid;grid-template-columns:130px 160px 1fr;gap:10px;align-items:end">
+          <div class="field-group">
+            <label class="field-label">Ma marge %</label>
+            <input type="number" id="ao-marge" placeholder="ex: 12" step="0.1" oninput="majProfitCalc()">
+          </div>
+          <div class="field-group">
+            <label class="field-label">Mon montant $</label>
+            <input type="number" id="ao-montant-saisi" placeholder="ex: 250000" oninput="majProfitCalc()">
+          </div>
+          <div class="field-group">
+            <label class="field-label">Notes</label>
+            <input type="text" id="ao-notes" placeholder="Remarques...">
+          </div>
+        </div>
+        <div style="display:flex;gap:12px;margin-top:10px;align-items:center">
+          <button class="btn btn-primary" onclick="sauvegarderMarge()">Sauvegarder</button>
+          <span id="ao-profit-calc" style="font-size:11px;color:var(--accent)"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MODAL : COMPÉTITEUR ══════════════════════════════ -->
+<div class="modal-overlay" id="comp-modal">
+  <div class="modal-box">
+    <div class="modal-head">
+      <span class="modal-title" id="comp-modal-titre">Compétiteur</span>
+      <button class="btn btn-ghost" style="padding:4px 10px;font-size:12px" onclick="fermerModal('comp-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="kpi-row" id="comp-kpis" style="grid-template-columns:repeat(4,1fr)"></div>
+      <div>
+        <div class="modal-section-title">Historique des appels</div>
+        <table class="projets-table">
+          <thead><tr><th>Date</th><th>Titre</th><th style="text-align:center">Rang</th><th style="text-align:right">Montant</th><th></th></tr></thead>
+          <tbody id="comp-ao-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MODAL : PARAMÈTRES ═══════════════════════════════ -->
+<div class="modal-overlay" id="params-modal">
+  <div class="modal-box" style="max-width:460px">
+    <div class="modal-head">
+      <span class="modal-title">⚙ Paramètres SEAO</span>
+      <button class="btn btn-ghost" style="padding:4px 10px;font-size:12px" onclick="fermerModal('params-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div class="field-group">
+          <label class="field-label">Mon NEQ (Construction Richard Champagne)</label>
+          <input type="text" id="p-mon-neq" placeholder="ex: 1234567890">
+        </div>
+        <div class="field-group">
+          <label class="field-label">Seuil écart élevé % — flag "aurait pu monter"</label>
+          <input type="number" id="p-ecart-eleve" placeholder="5" step="0.5">
+        </div>
+        <div class="field-group">
+          <label class="field-label">Marge min viable % — flag "marge trop basse"</label>
+          <input type="number" id="p-marge-min" placeholder="8" step="0.5">
+        </div>
+        <div style="display:flex;gap:10px;align-items:center;margin-top:4px">
+          <button class="btn btn-primary" onclick="sauvegarderParams()">Sauvegarder</button>
+          <button class="btn btn-ghost" onclick="lancerSync()">↻ Sync SEAO</button>
+        </div>
+        <div id="params-status" style="font-size:11px;color:var(--text3)"></div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <div id="toast"></div>
@@ -569,9 +845,11 @@ async function checkServer() {
 // ── NAVIGATION ──────────────────────────────────────────
 function showPage(page) {
   document.querySelectorAll('[id^="page-"]').forEach(el => el.style.display = 'none');
-  document.getElementById('page-' + page).style.display = 'block';
+  const el = document.getElementById('page-' + page);
+  el.style.display = page === 'marche' ? 'flex' : 'block';
   document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
   event.currentTarget.classList.add('active');
+  if (page === 'marche') loadMarche();
 }
 
 // ── PROJETS ─────────────────────────────────────────────
@@ -783,6 +1061,288 @@ function markdownToHtml(md) {
     .replace(/\n\n/g, '</p><p>')
     .replace(/^(?!<[hup]|<li|<hr)(.+)$/gm, '<p>$1</p>');
 }
+
+// ── SEAO / MARCHÉ ────────────────────────────────────────
+let currentAoNoAvis = null;
+let filtresSeao = { annee: '2025', date_debut: '', date_fin: '' };
+
+async function loadMarche() {
+  await Promise.all([loadSeaoDashboard(), loadSeaoAppels(), loadCompetiteurs()]);
+}
+
+async function loadSeaoDashboard() {
+  try {
+    const r = await fetch(`${API}/seao/dashboard`);
+    const d = await r.json();
+    if (d.error) { console.warn('SEAO:', d.error); return; }
+    const k = d.kpis;
+    document.getElementById('kpi-total').textContent   = k.total_ao || 0;
+    document.getElementById('kpi-actifs-sub').textContent = `${k.ao_actifs || 0} actifs`;
+    document.getElementById('kpi-soumis').textContent  = k.mes_ao || 0;
+    document.getElementById('kpi-gagnes-sub').textContent = `${k.ao_gagnes || 0} gagnés — ${k.taux_succes || 0}%`;
+    document.getElementById('kpi-profit').textContent  = k.profit_total > 0 ? '$' + fmtMontant(k.profit_total) : '—';
+    document.getElementById('kpi-position').textContent = k.position_moyenne ? '#' + k.position_moyenne : '—';
+    const alertes = d.alertes_marge || [];
+    const bar = document.getElementById('seao-alerte');
+    if (alertes.length > 0) {
+      bar.style.display = 'flex';
+      document.getElementById('seao-alerte-txt').textContent = `${alertes.length} projet(s) sans marge saisie :`;
+      document.getElementById('seao-alerte-links').innerHTML = alertes.map(a =>
+        `<button class="link-btn" onclick="ouvrirAODetail('${esc(a.no_avis)}')">${esc(a.no_avis)}</button>`
+      ).join('');
+    } else { bar.style.display = 'none'; }
+  } catch(e) { console.error(e); }
+}
+
+async function loadSeaoAppels() {
+  const tbody = document.getElementById('seao-table-body');
+  tbody.innerHTML = '<tr><td colspan="8" style="color:var(--text3);text-align:center;padding:16px">Chargement...</td></tr>';
+  const p = new URLSearchParams();
+  if (filtresSeao.annee)      p.set('annee',      filtresSeao.annee);
+  if (filtresSeao.date_debut) p.set('date_debut', filtresSeao.date_debut);
+  if (filtresSeao.date_fin)   p.set('date_fin',   filtresSeao.date_fin);
+  p.set('par_page', '300');
+  try {
+    const r = await fetch(`${API}/seao/appels?${p}`);
+    const d = await r.json();
+    if (d.error) {
+      tbody.innerHTML = `<tr><td colspan="8" style="color:var(--red);padding:16px">${d.error}</td></tr>`;
+      return;
+    }
+    document.getElementById('seao-total-txt').textContent = `${d.total} AO`;
+    renderSeaoTable(d.appels || []);
+  } catch(e) {
+    tbody.innerHTML = '<tr><td colspan="8" style="color:var(--red);text-align:center;padding:16px">Erreur chargement</td></tr>';
+  }
+}
+
+const FLAG_CFG = {
+  gagne:           { cls: 'flag-gagne',     tip: '🟢 Gagné' },
+  aurait_pu_monter:{ cls: 'flag-aurait-pu', tip: '🟡 Gagné — aurait pu monter' },
+  marge_trop_basse:{ cls: 'flag-trop-bas',  tip: '🔴 Perdu — écart faible' },
+  perdu:           { cls: 'flag-perdu',     tip: '🔴 Perdu' },
+  pas_soumis:      { cls: 'flag-rien',      tip: '⚫ Pas soumis' },
+};
+
+function renderSeaoTable(appels) {
+  const tbody = document.getElementById('seao-table-body');
+  if (!appels.length) {
+    tbody.innerHTML = '<tr><td colspan="8" style="color:var(--text3);text-align:center;padding:20px">Aucun AO pour cette période</td></tr>';
+    return;
+  }
+  tbody.innerHTML = appels.map(a => {
+    const f   = FLAG_CFG[a.flag] || FLAG_CFG.pas_soumis;
+    const mon = a.mon_soumission ? '$' + fmtMontant(a.mon_soumission) : '—';
+    const gNom = a.gagnant_nom ? shortNom(a.gagnant_nom) : '—';
+    const gMon = a.gagnant_montant ? ' <span style="color:var(--text3);font-size:10px">$' + fmtMontant(a.gagnant_montant) + '</span>' : '';
+    let ecartHtml = '—';
+    if (a.ecart_pct !== null && a.ecart_pct !== undefined) {
+      const sign  = a.ecart_pct >= 0 ? '+' : '';
+      const color = a.ecart_pct > 10 ? 'var(--yellow)' : a.ecart_pct < 0 ? 'var(--text3)' : 'var(--green)';
+      ecartHtml = `<span style="color:${color}">${sign}${a.ecart_pct}%</span>`;
+    }
+    return `
+      <tr style="cursor:pointer" onclick="ouvrirAODetail('${esc(a.no_avis)}')">
+        <td style="text-align:center" title="${f.tip}"><span class="flag ${f.cls}"></span></td>
+        <td style="color:var(--text3);font-size:11px;white-space:nowrap">${a.date_publication || '—'}</td>
+        <td style="color:var(--text);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(a.titre)}">${esc(a.titre)}</td>
+        <td style="color:var(--text2);font-size:11px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(a.organisme)}">${esc(a.organisme)}</td>
+        <td style="text-align:center;color:${a.mon_rang===1?'var(--green)':'var(--text2)'}">${a.mon_rang != null ? '#'+a.mon_rang : '—'}</td>
+        <td style="text-align:right;font-family:var(--mono);font-size:12px">${mon}</td>
+        <td style="font-size:11px" title="${esc(a.gagnant_nom||'')}">${esc(shortNom(a.gagnant_nom))}${gMon}</td>
+        <td style="text-align:right">${ecartHtml}</td>
+      </tr>`;
+  }).join('');
+}
+
+async function ouvrirAODetail(noAvis) {
+  currentAoNoAvis = noAvis;
+  document.getElementById('ao-modal-titre').textContent = noAvis;
+  document.getElementById('ao-modal').classList.add('open');
+  document.getElementById('ao-soum-body').innerHTML =
+    '<tr><td colspan="5" style="color:var(--text3);text-align:center;padding:12px">Chargement...</td></tr>';
+  document.getElementById('ao-info').innerHTML = '';
+  document.getElementById('ao-profit-calc').textContent = '';
+  try {
+    const r = await fetch(`${API}/seao/appel/${encodeURIComponent(noAvis)}`);
+    const d = await r.json();
+    if (d.error) { toast(d.error, 'error'); return; }
+    const ao = d.ao;
+    document.getElementById('ao-modal-titre').textContent = ao.titre || noAvis;
+    document.getElementById('ao-info').innerHTML = `
+      <div><span class="info-key">No avis</span><span class="info-val">${esc(ao.no_avis||'—')}</span></div>
+      <div><span class="info-key">Organisme</span><span class="info-val">${esc(ao.organisme||'—')}</span></div>
+      <div><span class="info-key">Région</span><span class="info-val">${ao.region||'—'}</span></div>
+      <div><span class="info-key">Date ouverture</span><span class="info-val">${ao.date_ouverture||'—'}</span></div>
+      <div><span class="info-key">Montant estimé</span><span class="info-val">${ao.montant_estime ? '$'+fmtMontant(ao.montant_estime) : '—'}</span></div>
+      <div><span class="info-key">Statut</span><span class="info-val">${ao.statut||'—'}${ao.url_seao ? ` &nbsp;<a href="${ao.url_seao}" target="_blank" style="color:var(--accent2);font-size:10px">SEAO ↗</a>` : ''}</span></div>`;
+    const soums = d.soumissions || [];
+    const gMon = soums.find(s=>s.gagnant)?.montant;
+    document.getElementById('ao-soum-body').innerHTML = soums.length ? soums.map(s => {
+      const ecart = s.rang > 1 && gMon && s.montant
+        ? ((s.montant - gMon) / gMon * 100).toFixed(1) : null;
+      return `<tr>
+        <td style="color:${s.rang===1?'var(--green)':'var(--text3)'}">#${s.rang}</td>
+        <td style="color:${s.gagnant?'var(--green)':'var(--text2)'}">${s.gagnant?'🏆 ':''}${esc(s.soumissionnaire)}</td>
+        <td style="text-align:right">${s.montant ? '$'+fmtMontant(s.montant) : '—'}</td>
+        <td style="text-align:right;color:var(--yellow)">${ecart!==null ? '+'+ecart+'%' : s.rang===1 ? '<span style="color:var(--green)">—</span>' : '—'}</td>
+        <td><button class="link-btn" onclick="ouvrirCompetiteur('${esc(s.neq||s.soumissionnaire)}')">→</button></td>
+      </tr>`;
+    }).join('') : '<tr><td colspan="5" style="color:var(--text3);text-align:center;padding:10px">Aucune soumission</td></tr>';
+    const mes = d.mes_donnees;
+    document.getElementById('ao-marge').value         = mes?.ma_marge_pct || '';
+    document.getElementById('ao-montant-saisi').value = mes?.mon_montant  || '';
+    document.getElementById('ao-notes').value         = mes?.notes        || '';
+    majProfitCalc();
+    if (d.calculs?.ecart_1er_2e_pct !== undefined) {
+      const c = d.calculs;
+      document.getElementById('ao-profit-calc').textContent =
+        `Écart 1er→2e : +${c.ecart_1er_2e_pct}% ($${fmtMontant(c.ecart_1er_2e_montant)})`;
+    }
+  } catch(e) { toast('Erreur chargement AO', 'error'); console.error(e); }
+}
+
+function majProfitCalc() {
+  const m = parseFloat(document.getElementById('ao-marge').value);
+  const v = parseFloat(document.getElementById('ao-montant-saisi').value);
+  if (m && v) document.getElementById('ao-profit-calc').textContent =
+    `Profit estimé : $${fmtMontant(m/100*v)} (${m}% × $${fmtMontant(v)})`;
+}
+
+async function sauvegarderMarge() {
+  const body = {
+    no_avis:       currentAoNoAvis,
+    ma_marge_pct:  parseFloatOrNull(document.getElementById('ao-marge').value),
+    mon_montant:   parseFloatOrNull(document.getElementById('ao-montant-saisi').value),
+    notes:         document.getElementById('ao-notes').value,
+  };
+  try {
+    const r = await fetch(`${API}/seao/marge`, {
+      method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)
+    });
+    const d = await r.json();
+    if (d.ok) { toast('Marge sauvegardée ✓', 'success'); loadSeaoDashboard(); majProfitCalc(); }
+    else toast(d.error||'Erreur', 'error');
+  } catch(e) { toast('Erreur sauvegarde', 'error'); }
+}
+
+async function loadCompetiteurs() {
+  try {
+    const r = await fetch(`${API}/seao/competiteurs`);
+    const d = await r.json();
+    document.getElementById('comp-list-body').innerHTML = (d.competiteurs||[]).map(c => `
+      <div class="comp-item" onclick="ouvrirCompetiteur('${esc(c.neq||c.soumissionnaire)}')">
+        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:148px" title="${esc(c.soumissionnaire)}">${esc(c.soumissionnaire)}</span>
+        <span class="comp-badge"><span>${c.nb_soumissions}</span><span style="color:var(--green)">${c.nb_victoires}v</span></span>
+      </div>`).join('') || '<div style="color:var(--text3);font-size:11px;padding:8px">Aucune donnée</div>';
+  } catch(e) { console.error(e); }
+}
+
+async function ouvrirCompetiteur(identifiant) {
+  document.getElementById('comp-modal').classList.add('open');
+  document.getElementById('comp-modal-titre').textContent = identifiant;
+  document.getElementById('comp-kpis').innerHTML  = '<div style="color:var(--text3);font-size:11px">Chargement...</div>';
+  document.getElementById('comp-ao-body').innerHTML = '';
+  try {
+    const r = await fetch(`${API}/seao/competiteur/${encodeURIComponent(identifiant)}`);
+    const d = await r.json();
+    if (d.error) { toast(d.error, 'error'); return; }
+    const s = d.stats;
+    document.getElementById('comp-modal-titre').textContent = s.soumissionnaire;
+    const taux = s.nb_soumissions > 0 ? Math.round(s.nb_victoires/s.nb_soumissions*100) : 0;
+    document.getElementById('comp-kpis').innerHTML = `
+      <div class="kpi-card"><div class="kpi-label">Soumissions</div><div class="kpi-value" style="font-size:22px">${s.nb_soumissions}</div></div>
+      <div class="kpi-card"><div class="kpi-label">Victoires</div><div class="kpi-value" style="font-size:22px;color:var(--green)">${s.nb_victoires}</div></div>
+      <div class="kpi-card"><div class="kpi-label">Taux succès</div><div class="kpi-value" style="font-size:22px">${taux}%</div></div>
+      <div class="kpi-card"><div class="kpi-label">Montant moyen</div><div class="kpi-value" style="font-size:16px">${s.montant_moyen?'$'+fmtMontant(s.montant_moyen):'—'}</div></div>`;
+    document.getElementById('comp-ao-body').innerHTML = (d.appels||[]).map(a => `
+      <tr>
+        <td style="color:var(--text3);font-size:11px;white-space:nowrap">${a.date_publication||'—'}</td>
+        <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(a.titre)}">${esc(a.titre)}</td>
+        <td style="text-align:center;color:${a.rang===1?'var(--green)':'var(--text2)'}">#${a.rang}</td>
+        <td style="text-align:right">${a.montant?'$'+fmtMontant(a.montant):'—'}</td>
+        <td><button class="link-btn" onclick="fermerModal('comp-modal');ouvrirAODetail('${esc(a.no_avis)}')">→</button></td>
+      </tr>`).join('');
+  } catch(e) { toast('Erreur compétiteur', 'error'); console.error(e); }
+}
+
+function filtreAnnee(annee, el) {
+  document.querySelectorAll('.year-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  filtresSeao = { annee, date_debut: '', date_fin: '' };
+  document.getElementById('f-debut').value = '';
+  document.getElementById('f-fin').value   = '';
+  loadSeaoAppels();
+}
+
+function appliquerFiltres() {
+  filtresSeao = {
+    annee: '',
+    date_debut: document.getElementById('f-debut').value,
+    date_fin:   document.getElementById('f-fin').value,
+  };
+  document.querySelectorAll('.year-btn').forEach(b => b.classList.remove('active'));
+  loadSeaoAppels();
+}
+
+async function ouvrirParams() {
+  document.getElementById('params-modal').classList.add('open');
+  try {
+    const r = await fetch(`${API}/seao/parametres`);
+    const d = await r.json();
+    document.getElementById('p-mon-neq').value    = d.mon_neq          || '';
+    document.getElementById('p-ecart-eleve').value = d.ecart_marge_eleve || '5';
+    document.getElementById('p-marge-min').value  = d.marge_min_viable || '8';
+    document.getElementById('params-status').textContent = '';
+  } catch(e) {}
+}
+
+async function sauvegarderParams() {
+  try {
+    const r = await fetch(`${API}/seao/parametres`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        mon_neq:           document.getElementById('p-mon-neq').value,
+        ecart_marge_eleve: document.getElementById('p-ecart-eleve').value,
+        marge_min_viable:  document.getElementById('p-marge-min').value,
+      })
+    });
+    const d = await r.json();
+    if (d.ok) {
+      toast('Paramètres sauvegardés', 'success');
+      document.getElementById('params-status').textContent = '✓ Sauvegardé';
+      loadMarche();
+    } else toast(d.error||'Erreur', 'error');
+  } catch(e) { toast('Erreur', 'error'); }
+}
+
+async function lancerSync() {
+  document.getElementById('params-status').textContent = 'Sync en cours...';
+  try {
+    const r = await fetch(`${API}/seao/sync`, { method:'POST' });
+    const d = await r.json();
+    document.getElementById('params-status').textContent = d.message || 'Sync lancé';
+    toast('Sync SEAO lancé', 'success');
+  } catch(e) { toast('Erreur sync', 'error'); }
+}
+
+function fermerModal(id) { document.getElementById(id).classList.remove('open'); }
+
+// Helpers SEAO
+function fmtMontant(n) {
+  if (n == null) return '—';
+  return Math.round(n).toLocaleString('fr-CA');
+}
+function shortNom(nom) {
+  if (!nom) return '—';
+  const w = nom.split(' ');
+  return w.length > 4 ? w.slice(0,4).join(' ')+'…' : nom;
+}
+function esc(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function parseFloatOrNull(v) { const f=parseFloat(v); return isNaN(f)?null:f; }
 
 // ── TOAST ────────────────────────────────────────────────
 function toast(msg, type = 'info') {
