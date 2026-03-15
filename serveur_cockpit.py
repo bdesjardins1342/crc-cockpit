@@ -154,13 +154,18 @@ def seao_dashboard():
     ao_actifs = conn.execute("SELECT COUNT(*) FROM appels_offres WHERE statut='active'").fetchone()[0]
     mes_ao    = conn.execute("SELECT COUNT(*) FROM mes_projets WHERE mon_montant IS NOT NULL").fetchone()[0]
 
+    mon_nom   = params.get("mon_nom", "")
     ao_gagnes = 0
     pos_moy   = None
-    if mon_neq:
+    if mon_neq or mon_nom:
         ao_gagnes = conn.execute(
-            "SELECT COUNT(*) FROM soumissions WHERE neq=? AND gagnant=1", (mon_neq,)
+            "SELECT COUNT(*) FROM soumissions WHERE (neq=? OR soumissionnaire=?) AND gagnant=1",
+            (mon_neq, mon_nom)
         ).fetchone()[0]
-        row = conn.execute("SELECT AVG(rang) FROM soumissions WHERE neq=?", (mon_neq,)).fetchone()
+        row = conn.execute(
+            "SELECT AVG(rang) FROM soumissions WHERE neq=? OR soumissionnaire=?",
+            (mon_neq, mon_nom)
+        ).fetchone()
         pos_moy = round(row[0], 1) if row[0] else None
 
     profit_total = 0.0
@@ -209,6 +214,7 @@ def seao_appels(
         return {"error": "seao.db introuvable"}
     params    = _params(conn)
     mon_neq   = params.get("mon_neq", "")
+    mon_nom   = params.get("mon_nom", "")
     seuil_ec  = float(params.get("ecart_marge_eleve", "5"))
     marge_min = float(params.get("marge_min_viable", "8"))
 
@@ -233,7 +239,7 @@ def seao_appels(
                s2.montant AS second_montant
         FROM appels_offres ao
         LEFT JOIN mes_projets mp ON mp.ocid = ao.ocid
-        LEFT JOIN soumissions crc ON crc.ocid = ao.ocid AND crc.neq = ?
+        LEFT JOIN soumissions crc ON crc.ocid = ao.ocid AND (crc.neq = ? OR crc.soumissionnaire = ?)
         LEFT JOIN (SELECT ocid, soumissionnaire, montant FROM soumissions WHERE gagnant=1) w  ON w.ocid  = ao.ocid
         LEFT JOIN (SELECT ocid, montant FROM soumissions WHERE rang=2) s2 ON s2.ocid = ao.ocid
         {wc}
@@ -241,7 +247,7 @@ def seao_appels(
         LIMIT ? OFFSET ?
     """
     offset = (page - 1) * par_page
-    rows  = conn.execute(query, [mon_neq] + vals + [par_page, offset]).fetchall()
+    rows  = conn.execute(query, [mon_neq, mon_nom] + vals + [par_page, offset]).fetchall()
     total = conn.execute(f"SELECT COUNT(*) FROM appels_offres ao {wc}", vals).fetchone()[0]
 
     results = []
