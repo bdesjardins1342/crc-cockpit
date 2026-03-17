@@ -1,5 +1,5 @@
 # CRC COCKPIT — Document de référence
-Version 1.5 — Mars 2026 | Benoit Desjardins | CRC | Montréal
+Version 1.6 — Mars 2026 | Benoit Desjardins | CRC | Montréal
 
 ---
 
@@ -174,6 +174,7 @@ GET  /seao/appels             → liste paginée (filtres: annee, date, mes_ao)
 GET  /seao/appel/{no_avis}    → détail + soumissions + mes données
 GET  /seao/competiteur/{neq}  → stats compétiteur (filtré région 04/17)
 GET  /seao/annees_disponibles → années distinctes en DB (pour boutons dynamiques)
+GET  /seao/dashboard          → KPIs filtrés (params: annee, date_debut, date_fin)
 GET  /seao/competiteurs       → top compétiteurs région 04/17 (param ?q=)
 GET  /seao/parametres         → lire paramètres
 POST /seao/parametres         → sauvegarder paramètres
@@ -287,9 +288,12 @@ log_analyse.txt | registre.json
   - Sync automatique Windows Task Scheduler
   - Multi-sélection années (boutons toggle, filtre IN)
   - Boutons années dynamiques depuis DB + bouton [Tout]
+  - KPI dashboard respecte le filtre période (annee/dates)
+  - Tri colonnes tableau Marché (Date/Rang/Montant/Écart ↑↓)
   - Recherche compétiteurs par nom (barre de recherche)
   - ⭐ CRC épinglé en haut de la sidebar compétiteurs
   - Tri colonnes dans modal compétiteur (date/rang/montant)
+  - Import PDF Budget : gestion PDF scanné sans couche texte
 - Module Budget complet :
   - budget_manager.py + budget.db (3 tables)
   - CRUD projets / postes / dépenses
@@ -314,7 +318,9 @@ log_analyse.txt | registre.json
 
 ## 7. Notes techniques
 
-**Mon NEQ CRC :** `1180040314`
+**NEQ CRC principal :** `1148164123` (169 soumissions)
+**NEQ CRC secondaire :** `1180040314` (8 soumissions récentes)
+**mon_neq en DB :** `1148164123` | **mon_nom_like :** `%RICHARD CHAMPAGNE%`
 **Nom exact DB :** `CONSTRUCTION RICHARD CHAMPAGNE INC.`
 **Adresse :** 253 route 153, Saint-Tite QC G0X 3H0
 
