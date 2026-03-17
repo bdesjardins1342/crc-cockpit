@@ -161,7 +161,7 @@ def _params(conn) -> dict:
 
 
 @app.get("/seao/dashboard")
-def seao_dashboard():
+def seao_dashboard(annee: str = "", date_debut: str = "", date_fin: str = ""):
     conn = _seao_conn()
     if not conn:
         return {"error": "seao.db introuvable — lancer seao_scraper.py --sync"}
@@ -169,26 +169,61 @@ def seao_dashboard():
     mon_neq       = params.get("mon_neq", "")
     mon_nom_like  = params.get("mon_nom_like", "")
 
-    total_ao  = conn.execute("SELECT COUNT(*) FROM appels_offres").fetchone()[0]
-    ao_actifs = conn.execute("SELECT COUNT(*) FROM appels_offres WHERE statut='active'").fetchone()[0]
+    # Filtre temporel pour les KPIs
+    ao_where, ao_vals = [], []
+    if annee:
+        annees = [a.strip() for a in annee.split(',') if a.strip()]
+        if len(annees) == 1:
+            ao_where.append("strftime('%Y', date_publication) = ?"); ao_vals.append(annees[0])
+        elif len(annees) > 1:
+            ao_where.append(f"strftime('%Y', date_publication) IN ({','.join('?'*len(annees))})"); ao_vals.extend(annees)
+    if date_debut:
+        ao_where.append("date_publication >= ?"); ao_vals.append(date_debut)
+    if date_fin:
+        ao_where.append("date_publication <= ?"); ao_vals.append(date_fin)
+    ao_wc  = ("WHERE " + " AND ".join(ao_where)) if ao_where else ""
+    # filtre pour joindre avec soumissions via ocid
+    s_wc   = ("WHERE ao.ocid = s.ocid AND (" + " AND ".join(ao_where).replace("date_publication", "ao.date_publication") + ")") if ao_where else "WHERE ao.ocid = s.ocid"
 
-    # mes_soumissions = toutes les lignes CRC dans la table soumissions
-    mes_ao = conn.execute(
-        "SELECT COUNT(*) FROM soumissions WHERE neq=? OR soumissionnaire LIKE ?",
-        (mon_neq, mon_nom_like)
-    ).fetchone()[0] if (mon_neq or mon_nom_like) else 0
+    total_ao  = conn.execute(f"SELECT COUNT(*) FROM appels_offres {ao_wc}", ao_vals).fetchone()[0]
+    ao_actifs = conn.execute(f"SELECT COUNT(*) FROM appels_offres {('WHERE statut='+repr('active')+(' AND '+' AND '.join(ao_where)) if ao_where else 'WHERE statut='+repr('active'))}", ao_vals).fetchone()[0]
 
-    ao_gagnes = 0
-    pos_moy   = None
+    mes_ao, ao_gagnes, pos_moy = 0, 0, None
     if mon_neq or mon_nom_like:
-        ao_gagnes = conn.execute(
-            "SELECT COUNT(*) FROM soumissions WHERE (neq=? OR soumissionnaire LIKE ?) AND gagnant=1",
-            (mon_neq, mon_nom_like)
-        ).fetchone()[0]
-        row = conn.execute(
-            "SELECT AVG(rang) FROM soumissions WHERE neq=? OR soumissionnaire LIKE ?",
-            (mon_neq, mon_nom_like)
-        ).fetchone()
+        join_crc = f"""
+            SELECT COUNT(*) FROM soumissions s
+            JOIN appels_offres ao ON ao.ocid = s.ocid
+            {ao_wc.replace('WHERE','WHERE ao.') if ao_wc else ''}
+            {'AND' if ao_wc else 'WHERE'} (s.neq=? OR s.soumissionnaire LIKE ?)
+        """
+        # Build simpler direct queries with sub-filter
+        if ao_where:
+            ocid_sub = f"SELECT ocid FROM appels_offres {ao_wc}"
+            mes_ao = conn.execute(
+                f"SELECT COUNT(*) FROM soumissions WHERE ocid IN ({ocid_sub}) AND (neq=? OR soumissionnaire LIKE ?)",
+                ao_vals + [mon_neq, mon_nom_like]
+            ).fetchone()[0]
+            ao_gagnes = conn.execute(
+                f"SELECT COUNT(*) FROM soumissions WHERE ocid IN ({ocid_sub}) AND (neq=? OR soumissionnaire LIKE ?) AND gagnant=1",
+                ao_vals + [mon_neq, mon_nom_like]
+            ).fetchone()[0]
+            row = conn.execute(
+                f"SELECT AVG(rang) FROM soumissions WHERE ocid IN ({ocid_sub}) AND (neq=? OR soumissionnaire LIKE ?)",
+                ao_vals + [mon_neq, mon_nom_like]
+            ).fetchone()
+        else:
+            mes_ao = conn.execute(
+                "SELECT COUNT(*) FROM soumissions WHERE neq=? OR soumissionnaire LIKE ?",
+                (mon_neq, mon_nom_like)
+            ).fetchone()[0]
+            ao_gagnes = conn.execute(
+                "SELECT COUNT(*) FROM soumissions WHERE (neq=? OR soumissionnaire LIKE ?) AND gagnant=1",
+                (mon_neq, mon_nom_like)
+            ).fetchone()[0]
+            row = conn.execute(
+                "SELECT AVG(rang) FROM soumissions WHERE neq=? OR soumissionnaire LIKE ?",
+                (mon_neq, mon_nom_like)
+            ).fetchone()
         pos_moy = round(row[0], 1) if row[0] else None
 
     profit_total = 0.0
@@ -205,14 +240,15 @@ def seao_dashboard():
         WHERE mp.mon_montant IS NOT NULL AND mp.ma_marge_pct IS NULL
     """).fetchall()
 
-    derniers = conn.execute("""
+    derniers = conn.execute(f"""
         SELECT ao.ocid, ao.no_avis, ao.titre, ao.organisme, ao.region,
                ao.date_publication, ao.montant_estime, ao.statut,
                mp.ma_marge_pct, mp.mon_montant
         FROM appels_offres ao
         LEFT JOIN mes_projets mp ON mp.ocid = ao.ocid
+        {ao_wc}
         ORDER BY ao.date_publication DESC LIMIT 10
-    """).fetchall()
+    """, ao_vals).fetchall()
 
     conn.close()
     return {
@@ -686,7 +722,14 @@ async def budget_import_pdf(file: UploadFile = File(...)):
         return {"error": "pdfminer non installé: pip install pdfminer.six"}
     import io as _tmpio
     content = await file.read()
-    texte = extract_text(_tmpio.BytesIO(content))
+    if not content:
+        return {"error": "Fichier vide"}
+    try:
+        texte = extract_text(_tmpio.BytesIO(content))
+    except Exception as e:
+        return {"error": f"Impossible de lire ce PDF (peut-être scanné/image) : {str(e)[:120]}"}
+    if not texte or not texte.strip():
+        return {"error": "Aucun texte détecté — ce PDF semble être une image scannée sans couche texte"}
     lignes = []
     for line in texte.split('\n'):
         line = line.strip()

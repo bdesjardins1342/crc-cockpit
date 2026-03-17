@@ -658,7 +658,7 @@ option { background: var(--bg2); }
         <div class="filter-bar">
           <span style="font-size:10px;color:var(--text3);letter-spacing:1px;white-space:nowrap">PÉRIODE :</span>
           <button class="year-btn" id="btn-tout" onclick="filtreAnnee('',this)" style="white-space:nowrap">Tout</button>
-          <div id="annees-container" style="display:flex;gap:4px;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:thin"></div>
+          <div id="annees-container" style="display:flex;gap:4px;flex-shrink:0;flex-wrap:nowrap"></div>
           <span style="color:var(--border2)">|</span>
           <input type="date" id="f-debut" style="width:130px">
           <span style="color:var(--text3);font-size:11px">→</span>
@@ -720,13 +720,13 @@ option { background: var(--bg2); }
               <thead>
                 <tr>
                   <th style="width:30px"></th>
-                  <th>Date</th>
+                  <th style="cursor:pointer;user-select:none" onclick="sortSeao('date')"><span id="sms-date">Date ↓</span></th>
                   <th>Titre</th>
                   <th>Organisme</th>
-                  <th style="text-align:center">Rang</th>
-                  <th style="text-align:right">Mon montant</th>
+                  <th style="text-align:center;cursor:pointer;user-select:none" onclick="sortSeao('rang')"><span id="sms-rang">Rang</span></th>
+                  <th style="text-align:right;cursor:pointer;user-select:none" onclick="sortSeao('montant')"><span id="sms-montant">Mon montant</span></th>
                   <th>Gagnant</th>
-                  <th style="text-align:right">Écart</th>
+                  <th style="text-align:right;cursor:pointer;user-select:none" onclick="sortSeao('ecart')"><span id="sms-ecart">Écart</span></th>
                 </tr>
               </thead>
               <tbody id="seao-table-body">
@@ -1411,6 +1411,7 @@ const ANNEE_COURANTE = String(new Date().getFullYear());
 let filtresSeao = { annee: ANNEE_COURANTE, date_debut: '', date_fin: '' };
 let _allAppels    = [];
 let mesAOSeulement = false;
+let _seaoSort     = { col: 'date', dir: 'desc' };
 
 async function loadMarche() {
   await Promise.all([chargerAnnees(), loadSeaoDashboard(), loadSeaoAppels(), loadCompetiteurs()]);
@@ -1432,7 +1433,11 @@ async function chargerAnnees() {
 
 async function loadSeaoDashboard() {
   try {
-    const r = await fetch(`${API}/seao/dashboard`);
+    const p = new URLSearchParams();
+    if (filtresSeao.annee)      p.set('annee',      filtresSeao.annee);
+    if (filtresSeao.date_debut) p.set('date_debut', filtresSeao.date_debut);
+    if (filtresSeao.date_fin)   p.set('date_fin',   filtresSeao.date_fin);
+    const r = await fetch(`${API}/seao/dashboard?${p}`);
     const d = await r.json();
     if (d.error) { console.warn('SEAO:', d.error); return; }
     const k = d.kpis;
@@ -1489,9 +1494,37 @@ function dotFromRang(rang) {
   return             { cls: 'flag-perdu',            tip: '🔴 Rang #' + rang };
 }
 
+function sortSeao(col) {
+  if (_seaoSort.col === col) {
+    _seaoSort.dir = _seaoSort.dir === 'asc' ? 'desc' : 'asc';
+  } else {
+    _seaoSort = { col, dir: col === 'date' ? 'desc' : 'asc' };
+  }
+  ['date','rang','montant','ecart'].forEach(c => {
+    const el = document.getElementById(`sms-${c}`);
+    if (!el) return;
+    const labels = { date:'Date', rang:'Rang', montant:'Mon montant', ecart:'Écart' };
+    el.textContent = _seaoSort.col === c
+      ? labels[c] + (_seaoSort.dir === 'asc' ? ' ↑' : ' ↓')
+      : labels[c];
+  });
+  renderSeaoTable(_allAppels);
+}
+
 function renderSeaoTable(appels) {
   const tbody = document.getElementById('seao-table-body');
-  const liste = mesAOSeulement ? appels.filter(a => a.mon_rang != null) : appels;
+  const filtres = mesAOSeulement ? appels.filter(a => a.mon_rang != null) : appels;
+  const { col, dir } = _seaoSort;
+  const liste = [...filtres].sort((a, b) => {
+    let va, vb;
+    if      (col === 'date')    { va = a.date_publication||''; vb = b.date_publication||''; }
+    else if (col === 'rang')    { va = a.mon_rang??999;        vb = b.mon_rang??999; }
+    else if (col === 'montant') { va = a.mon_montant||0;       vb = b.mon_montant||0; }
+    else if (col === 'ecart')   { va = a.ecart_pct??999;       vb = b.ecart_pct??999; }
+    if (va < vb) return dir === 'asc' ? -1 : 1;
+    if (va > vb) return dir === 'asc' ?  1 : -1;
+    return 0;
+  });
   if (!liste.length) {
     tbody.innerHTML = '<tr><td colspan="8" style="color:var(--text3);text-align:center;padding:20px">'
       + (mesAOSeulement ? 'Aucun AO CRC pour cette période' : 'Aucun AO pour cette période')
