@@ -1,5 +1,5 @@
 # CRC COCKPIT — Document de référence
-Version 1.4 — Mars 2026 | Benoit Desjardins | CRC | Montréal
+Version 1.5 — Mars 2026 | Benoit Desjardins | CRC | Montréal
 
 ---
 
@@ -68,11 +68,12 @@ python -m uvicorn serveur_cockpit:app --reload --port 8000
 - **Budget** — suivi budgétaire par projet
 
 **Page Marché :**
-- Filtre par année (2023/24/25/26) ou date custom
+- Filtre par année dynamique (boutons générés depuis DB) + bouton [Tout] + dates custom
+- Boutons années multi-sélection (toggle), défaut = année courante
 - Bouton "Mes AOs" — filtre sur CRC seulement
 - KPIs : AO en DB, mes soumissions, profit estimé, position moyenne
 - Pastilles : 🟢 rang 1 | 🟡 rang 2-3 | 🔴 rang 4+
-- Sidebar compétiteurs avec stats région 04/17
+- Sidebar compétiteurs : ⭐ CRC épinglé en haut (amber) + recherche par nom + tri colonnes
 - Modal détail AO : tous soumissionnaires + montants + saisie marge
 - Page paramètres ⚙ : mon NEQ, seuils, bouton sync manuel
 - Bouton "+ AO privé" : saisie manuelle hors SEAO
@@ -172,6 +173,7 @@ GET  /seao/dashboard          → KPIs + derniers AO
 GET  /seao/appels             → liste paginée (filtres: annee, date, mes_ao)
 GET  /seao/appel/{no_avis}    → détail + soumissions + mes données
 GET  /seao/competiteur/{neq}  → stats compétiteur (filtré région 04/17)
+GET  /seao/annees_disponibles → années distinctes en DB (pour boutons dynamiques)
 GET  /seao/competiteurs       → top compétiteurs région 04/17 (param ?q=)
 GET  /seao/parametres         → lire paramètres
 POST /seao/parametres         → sauvegarder paramètres
@@ -284,7 +286,9 @@ log_analyse.txt | registre.json
   - AOs privés (hors SEAO)
   - Sync automatique Windows Task Scheduler
   - Multi-sélection années (boutons toggle, filtre IN)
+  - Boutons années dynamiques depuis DB + bouton [Tout]
   - Recherche compétiteurs par nom (barre de recherche)
+  - ⭐ CRC épinglé en haut de la sidebar compétiteurs
   - Tri colonnes dans modal compétiteur (date/rang/montant)
 - Module Budget complet :
   - budget_manager.py + budget.db (3 tables)
